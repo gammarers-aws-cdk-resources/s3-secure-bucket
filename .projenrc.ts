@@ -11,7 +11,7 @@ const project = new awscdk.AwsCdkConstructLibrary({
   projenrcTs: true,
   repositoryUrl: 'https://github.com/gammarers-aws-cdk-resources/s3-secure-bucket.git',
   releaseToNpm: true,
-  // npmTrustedPublishing: true,
+  npmTrustedPublishing: true,
   npmAccess: javascript.NpmAccess.PUBLIC,
   mergify: true,
   minNodeVersion: '20.0.0',
