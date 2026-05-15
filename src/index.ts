@@ -1,7 +1,7 @@
 import { DefaultStackSynthesizer, RemovalPolicy, Stack, Token } from 'aws-cdk-lib';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as s3 from 'aws-cdk-lib/aws-s3';
-import { RegionInfo } from 'aws-cdk-lib/region-info';
+import { FactName, RegionInfo } from 'aws-cdk-lib/region-info';
 import { Construct, IDependable } from 'constructs';
 
 /**
@@ -27,9 +27,9 @@ export const S3SecureBucketType = {
    * Centralized access logs for producers such as ALB/NLB, CloudFront standard logging (v2),
    * and S3 server access logging. Grants `s3:PutObject` on `AWSLogs/<account>/*` only (no read/list).
    *
-   * For {@link S3SecureBucketType.ACCESS_LOG_BUCKET}, the stack {@link Stack#region} must be a
-   * concrete region string at synthesis time so the regional ELBv2 log-delivery account ID can be
-   * resolved from `aws-cdk-lib/region-info` (legacy path alongside the log delivery service principal).
+   * For {@link S3SecureBucketType.ACCESS_LOG_BUCKET}, the regional ELBv2 log-delivery account ID
+   * (legacy path alongside the log delivery service principal) is resolved from `aws-cdk-lib/region-info`
+   * at synthesis time when {@link Stack#region} is known, or via a deploy-time mapping when it is a token.
    */
   ACCESS_LOG_BUCKET: 'AccessLogBucket',
 } as const;
@@ -80,9 +80,6 @@ export class S3SecureBucket extends s3.Bucket {
    * @param scope - Parent construct, typically a {@link Stack}.
    * @param id - Construct ID (stable logical ID segment).
    * @param props - Optional {@link s3.BucketProps} plus {@link S3SecureBucketProps.bucketType} and `eventBridgeEnabled` (applied via L1 override when true).
-   * @throws When `bucketType` is {@link S3SecureBucketType.ACCESS_LOG_BUCKET} and {@link Stack#region} is still
-   *   unresolved at synthesis time (a token). Set an explicit `env.region` on the stack so the ELBv2
-   *   log-delivery account can be looked up.
    */
   constructor(scope: Construct, id: string, props?: S3SecureBucketProps) {
     const bucketType = props?.bucketType || S3SecureBucketType.DEFAULT_BUCKET;
@@ -161,14 +158,10 @@ export class S3SecureBucket extends s3.Bucket {
 
       // In non–opt-in regions (for example ap-northeast-1), access logs are often delivered using the
       // regional ELBv2 account (root of that account) for s3:PutObject, not only the service principal above.
-      if (Token.isUnresolved(region)) {
-        throw new Error(
-          'S3SecureBucket ACCESS_LOG_BUCKET: cannot resolve ELBv2 log delivery account (stack region is a token). ' +
-            'Set a concrete `env.region` on the stack.',
-        );
-      }
-
-      const elbAccountId = RegionInfo.get(region).elbv2Account;
+      const stack = Stack.of(this);
+      const elbAccountId = Token.isUnresolved(stack.region)
+        ? stack.regionalFact(FactName.ELBV2_ACCOUNT)
+        : RegionInfo.get(stack.region).elbv2Account;
       if (elbAccountId) {
         this.addToResourcePolicy(new iam.PolicyStatement({
           effect: iam.Effect.ALLOW,

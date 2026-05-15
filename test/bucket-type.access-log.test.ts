@@ -112,14 +112,63 @@ describe('S3SecureBucket bucketType=ACCESS_LOG_BUCKET (us-east-1)', () => {
     expect(template.toJSON()).toMatchSnapshot();
   });
 
-  it('throws when stack region is a token', () => {
+  it('resolves ELBv2 log delivery account at deploy time when stack region is a token', () => {
     const tokenRegionApp = new App();
     const tokenRegionStack = new Stack(tokenRegionApp, 'UnresolvedRegionStack');
-    expect(() => {
-      new S3SecureBucket(tokenRegionStack, 'LogBucket', {
-        bucketType: S3SecureBucketType.ACCESS_LOG_BUCKET,
-      });
-    }).toThrow(/ELBv2 log delivery account/);
+    new S3SecureBucket(tokenRegionStack, 'LogBucket', {
+      bucketType: S3SecureBucketType.ACCESS_LOG_BUCKET,
+    });
+    const tokenRegionTemplate = Template.fromStack(tokenRegionStack);
+    const expectedElbv2Account = RegionInfo.get('us-east-1').elbv2Account;
+    if (expectedElbv2Account === undefined) {
+      throw new Error('Expected RegionInfo ELBv2 account for us-east-1');
+    }
+
+    tokenRegionTemplate.hasResourceProperties('AWS::S3::BucketPolicy', {
+      PolicyDocument: Match.objectLike({
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Effect: 'Allow',
+            Action: 's3:PutObject',
+            Principal: {
+              AWS: {
+                'Fn::Join': [
+                  '',
+                  Match.arrayWith([
+                    {
+                      'Fn::FindInMap': [
+                        'Elbv2AccountMap',
+                        { Ref: 'AWS::Region' },
+                        'value',
+                      ],
+                    },
+                  ]),
+                ],
+              },
+            },
+            Resource: {
+              'Fn::Join': [
+                '',
+                Match.arrayWith([
+                  Match.objectLike({
+                    'Fn::GetAtt': [
+                      Match.stringLikeRegexp('LogBucket'),
+                      'Arn',
+                    ],
+                  }),
+                  '/AWSLogs/',
+                  { Ref: 'AWS::AccountId' },
+                  '/*',
+                ]),
+              ],
+            },
+          }),
+        ]),
+      }),
+    });
+    tokenRegionTemplate.hasMapping('Elbv2AccountMap', Match.objectLike({
+      'us-east-1': { value: expectedElbv2Account },
+    }));
   });
 });
 
