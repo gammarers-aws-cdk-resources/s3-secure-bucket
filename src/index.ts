@@ -1,51 +1,89 @@
-import { DefaultStackSynthesizer, RemovalPolicy, Stack } from 'aws-cdk-lib';
+import { DefaultStackSynthesizer, RemovalPolicy, Stack, Token } from 'aws-cdk-lib';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as s3 from 'aws-cdk-lib/aws-s3';
-import { Construct } from 'constructs';
+import { RegionInfo } from 'aws-cdk-lib/region-info';
+import { Construct, IDependable } from 'constructs';
 
 /**
- * Bucket type constants. Use these values for the {@link S3SecureBucketProps.bucketType} property.
+ * Bucket type discriminator values for {@link S3SecureBucketProps.bucketType}.
+ *
+ * @see {@link S3SecureBucketProps.bucketType}
  */
 export const S3SecureBucketType = {
   /**
-   * Select when using this bucket as the CDK pipeline artifact bucket with a custom Qualifier
-   * (single-region or multi-region deployment).
+   * Pipeline artifact bucket when using a custom CDK bootstrap qualifier
+   * (single- or multi-region deployments).
    */
   DEPLOYMENT_PIPELINE_ARTIFACT_BUCKET: 'DeploymentPipelineArtifactBucket',
   /**
-   * Select when using this bucket as the CloudFront origin.
+   * Origin bucket for CloudFront distributions.
    */
   CLOUDFRONT_ORIGIN_BUCKET: 'CloudFrontOriginBucket',
   /**
-   * Select for the default bucket when not using a custom Qualifier.
+   * General-purpose secure bucket (default qualifier / standard use).
    */
   DEFAULT_BUCKET: 'DefaultBucket',
   /**
-   * Select when using this bucket as a centralized access log bucket
-   * for ALB, CloudFront, S3 server access logging, and similar producers.
+   * Centralized access logs for producers such as ALB/NLB, CloudFront standard logging (v2),
+   * and S3 server access logging. Grants `s3:PutObject` on `AWSLogs/<account>/*` only (no read/list).
+   *
+   * For {@link S3SecureBucketType.ACCESS_LOG_BUCKET}, the stack {@link Stack#region} must be a
+   * concrete region string at synthesis time so the regional ELBv2 log-delivery account ID can be
+   * resolved from `aws-cdk-lib/region-info` (legacy path alongside the log delivery service principal).
    */
   ACCESS_LOG_BUCKET: 'AccessLogBucket',
 } as const;
 
-/** Bucket type: one of the {@link S3SecureBucketType} constant values. */
+/**
+ * Discriminated union of {@link S3SecureBucketType} string literals.
+ */
 export type S3SecureBucketType = typeof S3SecureBucketType[keyof typeof S3SecureBucketType];
 
 /**
- * Props for {@link S3SecureBucket}. Extends `s3.BucketProps` with a bucket type for secure defaults.
+ * Construction properties for {@link S3SecureBucket}.
+ *
+ * Extends {@link s3.BucketProps}; several fields receive secure defaults inside the construct.
  */
 export interface S3SecureBucketProps extends s3.BucketProps {
 
   /**
-   * The type of the bucket. Determines encryption and resource policy behavior.
-   * @default S3SecureBucketType.DEFAULT_BUCKET
+   * Selects encryption defaults and optional resource-policy statements.
+   *
+   * @default {@link S3SecureBucketType.DEFAULT_BUCKET}
    */
   readonly bucketType?: S3SecureBucketType;
 }
 
 /**
- * An S3 bucket with secure defaults: private access, SSL enforced, public access blocked, and encryption required.
+ * S3 bucket with opinionated secure defaults: private ACLs, block public access, TLS-only access,
+ * and encryption (S3-managed for log/origin types; KMS-managed by default otherwise).
+ *
+ * @remarks
+ * - {@link S3SecureBucketType.DEPLOYMENT_PIPELINE_ARTIFACT_BUCKET}: may attach a deploy-role policy when a non-default bootstrap qualifier is present.
+ * - {@link S3SecureBucketType.ACCESS_LOG_BUCKET}: adds log-writer principals; see {@link S3SecureBucketType.ACCESS_LOG_BUCKET} and {@link S3SecureBucket#accessLogBucketPolicyDependable}.
  */
 export class S3SecureBucket extends s3.Bucket {
+  /**
+   * Set only when {@link S3SecureBucketProps.bucketType} is {@link S3SecureBucketType.ACCESS_LOG_BUCKET}.
+   * Use as a dependency target so load balancer access-log enablement runs after the bucket policy
+   * exists (ELB performs an immediate validation `PutObject` that fails if the policy is not applied yet).
+   *
+   * Example: `loadBalancer.node.addDependency(bucket.accessLogBucketPolicyDependable!)`.
+   *
+   * @default undefined when `bucketType` is not {@link S3SecureBucketType.ACCESS_LOG_BUCKET}.
+   */
+  public readonly accessLogBucketPolicyDependable?: IDependable;
+
+  /**
+   * Creates a secure S3 bucket according to `bucketType` and merged `props`.
+   *
+   * @param scope - Parent construct, typically a {@link Stack}.
+   * @param id - Construct ID (stable logical ID segment).
+   * @param props - Optional {@link s3.BucketProps} plus {@link S3SecureBucketProps.bucketType} and `eventBridgeEnabled` (applied via L1 override when true).
+   * @throws When `bucketType` is {@link S3SecureBucketType.ACCESS_LOG_BUCKET} and {@link Stack#region} is still
+   *   unresolved at synthesis time (a token). Set an explicit `env.region` on the stack so the ELBv2
+   *   log-delivery account can be looked up.
+   */
   constructor(scope: Construct, id: string, props?: S3SecureBucketProps) {
     const bucketType = props?.bucketType || S3SecureBucketType.DEFAULT_BUCKET;
     super(scope, id, {
@@ -105,8 +143,10 @@ export class S3SecureBucket extends s3.Bucket {
     }
 
     if (bucketType === S3SecureBucketType.ACCESS_LOG_BUCKET) {
-      // Allow ALB / NLB log delivery to put objects (no read or list)
-      this.addToResourcePolicy(new iam.PolicyStatement({
+      const awsLogsPrefixResource = `${this.bucketArn}/AWSLogs/${account}/*`;
+
+      // Allow ALB / NLB log delivery (modern service principal path; also required in opt-in regions).
+      const albLogDeliveryPolicyResult = this.addToResourcePolicy(new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         principals: [
           new iam.ServicePrincipal('logdelivery.elasticloadbalancing.amazonaws.com'),
@@ -115,9 +155,36 @@ export class S3SecureBucket extends s3.Bucket {
           's3:PutObject',
         ],
         resources: [
-          `${this.bucketArn}/AWSLogs/${account}/*`,
+          awsLogsPrefixResource,
         ],
       }));
+
+      // In non–opt-in regions (for example ap-northeast-1), access logs are often delivered using the
+      // regional ELBv2 account (root of that account) for s3:PutObject, not only the service principal above.
+      if (Token.isUnresolved(region)) {
+        throw new Error(
+          'S3SecureBucket ACCESS_LOG_BUCKET: cannot resolve ELBv2 log delivery account (stack region is a token). ' +
+            'Set a concrete `env.region` on the stack.',
+        );
+      }
+
+      const elbAccountId = RegionInfo.get(region).elbv2Account;
+      if (elbAccountId) {
+        this.addToResourcePolicy(new iam.PolicyStatement({
+          effect: iam.Effect.ALLOW,
+          principals: [
+            new iam.AccountPrincipal(elbAccountId),
+          ],
+          actions: [
+            's3:PutObject',
+          ],
+          resources: [
+            awsLogsPrefixResource,
+          ],
+        }));
+      }
+
+      this.accessLogBucketPolicyDependable = albLogDeliveryPolicyResult.policyDependable ?? this;
 
       // Allow CloudFront standard logging (v2) to write logs
       this.addToResourcePolicy(new iam.PolicyStatement({
@@ -129,7 +196,7 @@ export class S3SecureBucket extends s3.Bucket {
           's3:PutObject',
         ],
         resources: [
-          `${this.bucketArn}/AWSLogs/${account}/*`,
+          awsLogsPrefixResource,
         ],
       }));
 
@@ -143,7 +210,7 @@ export class S3SecureBucket extends s3.Bucket {
           's3:PutObject',
         ],
         resources: [
-          `${this.bucketArn}/AWSLogs/${account}/*`,
+          awsLogsPrefixResource,
         ],
       }));
     }
