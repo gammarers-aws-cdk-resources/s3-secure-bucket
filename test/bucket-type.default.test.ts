@@ -21,6 +21,10 @@ describe('S3SecureBucket bucketType=DEFAULT_BUCKET (implicit) Testing', () => {
       expect(bucket).toBeInstanceOf(s3.Bucket);
     });
 
+    it('does not expose accessLogBucketPolicyDependable', () => {
+      expect(bucket.accessLogBucketPolicyDependable).toBeUndefined();
+    });
+
     it('Should have encryption (KMS managed)', () => {
       template.hasResourceProperties('AWS::S3::Bucket', {
         BucketEncryption: Match.objectEquals({

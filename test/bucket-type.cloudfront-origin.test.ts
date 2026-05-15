@@ -16,6 +16,10 @@ describe('S3SecureBucket bucketType=CLOUDFRONT_ORIGIN_BUCKET Testing', () => {
     expect(bucket).toBeInstanceOf(s3.Bucket);
   });
 
+  it('does not expose accessLogBucketPolicyDependable', () => {
+    expect(bucket.accessLogBucketPolicyDependable).toBeUndefined();
+  });
+
   const template = Template.fromStack(stack);
 
   it('Should have encryption (S3 managed / AES256)', () => {

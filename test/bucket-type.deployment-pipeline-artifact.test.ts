@@ -22,6 +22,10 @@ describe('S3SecureBucket bucketType=DEPLOYMENT_PIPELINE_ARTIFACT_BUCKET Testing'
     expect(bucket).toBeInstanceOf(s3.Bucket);
   });
 
+  it('does not expose accessLogBucketPolicyDependable', () => {
+    expect(bucket.accessLogBucketPolicyDependable).toBeUndefined();
+  });
+
   const template = Template.fromStack(stack);
 
   it('Should have bucket policy for custom qualifier deploy role', () => {

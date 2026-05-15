@@ -4,7 +4,9 @@
 
 ### S3SecureBucket <a name="S3SecureBucket" id="s3-secure-bucket.S3SecureBucket"></a>
 
-An S3 bucket with secure defaults: private access, SSL enforced, public access blocked, and encryption required.
+S3 bucket with opinionated secure defaults: private ACLs, block public access, TLS-only access, and encryption (S3-managed for log/origin types;
+
+KMS-managed by default otherwise).
 
 #### Initializers <a name="Initializers" id="s3-secure-bucket.S3SecureBucket.Initializer"></a>
 
@@ -16,9 +18,9 @@ new S3SecureBucket(scope: Construct, id: string, props?: S3SecureBucketProps)
 
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
-| <code><a href="#s3-secure-bucket.S3SecureBucket.Initializer.parameter.scope">scope</a></code> | <code>constructs.Construct</code> | *No description.* |
-| <code><a href="#s3-secure-bucket.S3SecureBucket.Initializer.parameter.id">id</a></code> | <code>string</code> | *No description.* |
-| <code><a href="#s3-secure-bucket.S3SecureBucket.Initializer.parameter.props">props</a></code> | <code><a href="#s3-secure-bucket.S3SecureBucketProps">S3SecureBucketProps</a></code> | *No description.* |
+| <code><a href="#s3-secure-bucket.S3SecureBucket.Initializer.parameter.scope">scope</a></code> | <code>constructs.Construct</code> | - Parent construct, typically a {@link Stack}. |
+| <code><a href="#s3-secure-bucket.S3SecureBucket.Initializer.parameter.id">id</a></code> | <code>string</code> | - Construct ID (stable logical ID segment). |
+| <code><a href="#s3-secure-bucket.S3SecureBucket.Initializer.parameter.props">props</a></code> | <code><a href="#s3-secure-bucket.S3SecureBucketProps">S3SecureBucketProps</a></code> | - Optional {@link s3.BucketProps} plus {@link S3SecureBucketProps.bucketType} and `eventBridgeEnabled` (applied via L1 override when true). |
 
 ---
 
@@ -26,17 +28,23 @@ new S3SecureBucket(scope: Construct, id: string, props?: S3SecureBucketProps)
 
 - *Type:* constructs.Construct
 
+Parent construct, typically a {@link Stack}.
+
 ---
 
 ##### `id`<sup>Required</sup> <a name="id" id="s3-secure-bucket.S3SecureBucket.Initializer.parameter.id"></a>
 
 - *Type:* string
 
+Construct ID (stable logical ID segment).
+
 ---
 
 ##### `props`<sup>Optional</sup> <a name="props" id="s3-secure-bucket.S3SecureBucket.Initializer.parameter.props"></a>
 
 - *Type:* <a href="#s3-secure-bucket.S3SecureBucketProps">S3SecureBucketProps</a>
+
+Optional {@link s3.BucketProps} plus {@link S3SecureBucketProps.bucketType} and `eventBridgeEnabled` (applied via L1 override when true).
 
 ---
 
@@ -1085,6 +1093,7 @@ allow legacy bucket naming style, default is false.
 | <code><a href="#s3-secure-bucket.S3SecureBucket.property.disallowPublicAccess">disallowPublicAccess</a></code> | <code>boolean</code> | Whether to disallow public access. |
 | <code><a href="#s3-secure-bucket.S3SecureBucket.property.policy">policy</a></code> | <code>aws-cdk-lib.aws_s3.BucketPolicy</code> | The resource policy associated with this bucket. |
 | <code><a href="#s3-secure-bucket.S3SecureBucket.property.replicationRoleArn">replicationRoleArn</a></code> | <code>string</code> | Role used to set up permissions on this bucket for replication. |
+| <code><a href="#s3-secure-bucket.S3SecureBucket.property.accessLogBucketPolicyDependable">accessLogBucketPolicyDependable</a></code> | <code>constructs.IDependable</code> | Set only when {@link S3SecureBucketProps.bucketType} is {@link S3SecureBucketType.ACCESS_LOG_BUCKET}. Use as a dependency target so load balancer access-log enablement runs after the bucket policy exists (ELB performs an immediate validation `PutObject` that fails if the policy is not applied yet). |
 
 ---
 
@@ -1303,6 +1312,21 @@ Role used to set up permissions on this bucket for replication.
 
 ---
 
+##### `accessLogBucketPolicyDependable`<sup>Optional</sup> <a name="accessLogBucketPolicyDependable" id="s3-secure-bucket.S3SecureBucket.property.accessLogBucketPolicyDependable"></a>
+
+```typescript
+public readonly accessLogBucketPolicyDependable: IDependable;
+```
+
+- *Type:* constructs.IDependable
+- *Default:* undefined when `bucketType` is not {@link S3SecureBucketType.ACCESS_LOG_BUCKET }.
+
+Set only when {@link S3SecureBucketProps.bucketType} is {@link S3SecureBucketType.ACCESS_LOG_BUCKET}. Use as a dependency target so load balancer access-log enablement runs after the bucket policy exists (ELB performs an immediate validation `PutObject` that fails if the policy is not applied yet).
+
+Example: `loadBalancer.node.addDependency(bucket.accessLogBucketPolicyDependable!)`.
+
+---
+
 #### Constants <a name="Constants" id="Constants"></a>
 
 | **Name** | **Type** | **Description** |
@@ -1327,9 +1351,9 @@ Uniquely identifies this class.
 
 ### S3SecureBucketProps <a name="S3SecureBucketProps" id="s3-secure-bucket.S3SecureBucketProps"></a>
 
-Props for {@link S3SecureBucket}.
+Construction properties for {@link S3SecureBucket}.
 
-Extends `s3.BucketProps` with a bucket type for secure defaults.
+Extends {@link s3.BucketProps}; several fields receive secure defaults inside the construct.
 
 #### Initializer <a name="Initializer" id="s3-secure-bucket.S3SecureBucketProps.Initializer"></a>
 
@@ -1377,7 +1401,7 @@ const s3SecureBucketProps: S3SecureBucketProps = { ... }
 | <code><a href="#s3-secure-bucket.S3SecureBucketProps.property.websiteIndexDocument">websiteIndexDocument</a></code> | <code>string</code> | The name of the index document (e.g. "index.html") for the website. Enables static website hosting for this bucket. |
 | <code><a href="#s3-secure-bucket.S3SecureBucketProps.property.websiteRedirect">websiteRedirect</a></code> | <code>aws-cdk-lib.aws_s3.RedirectTarget</code> | Specifies the redirect behavior of all requests to a website endpoint of a bucket. |
 | <code><a href="#s3-secure-bucket.S3SecureBucketProps.property.websiteRoutingRules">websiteRoutingRules</a></code> | <code>aws-cdk-lib.aws_s3.RoutingRule[]</code> | Rules that define when a redirect is applied and the redirect behavior. |
-| <code><a href="#s3-secure-bucket.S3SecureBucketProps.property.bucketType">bucketType</a></code> | <code>string</code> | The type of the bucket. |
+| <code><a href="#s3-secure-bucket.S3SecureBucketProps.property.bucketType">bucketType</a></code> | <code>string</code> | Selects encryption defaults and optional resource-policy statements. |
 
 ---
 
@@ -1898,11 +1922,9 @@ public readonly bucketType: string;
 ```
 
 - *Type:* string
-- *Default:* S3SecureBucketType.DEFAULT_BUCKET
+- *Default:* {@link S3SecureBucketType.DEFAULT_BUCKET }
 
-The type of the bucket.
-
-Determines encryption and resource policy behavior.
+Selects encryption defaults and optional resource-policy statements.
 
 ---
 
