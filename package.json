@@ -1,5 +1,6 @@
 {
   "name": "s3-secure-bucket",
+  "description": "S3 Secure Bucket is a construct that creates a secure bucket with encryption, logging, and other security features.",
   "repository": {
     "type": "git",
     "url": "https://github.com/gammarers-aws-cdk-resources/s3-secure-bucket.git"

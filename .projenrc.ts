@@ -10,6 +10,7 @@ const project = new awscdk.AwsCdkConstructLibrary({
   packageManager: javascript.NodePackageManager.YARN_CLASSIC,
   projenrcTs: true,
   repositoryUrl: 'https://github.com/gammarers-aws-cdk-resources/s3-secure-bucket.git',
+  description: 'S3 Secure Bucket is a construct that creates a secure bucket with encryption, logging, and other security features.',
   releaseToNpm: true,
   npmTrustedPublishing: true,
   npmAccess: javascript.NpmAccess.PUBLIC,
