@@ -32,6 +32,12 @@ export const S3SecureBucketType = {
    * at synthesis time when {@link Stack#region} is known, or via a deploy-time mapping when it is a token.
    */
   ACCESS_LOG_BUCKET: 'AccessLogBucket',
+  /**
+   * Archive bucket for log data exported from CloudWatch Logs via export tasks.
+   * Grants `logs.<region>.amazonaws.com` `s3:GetBucketAcl` and `s3:PutObject` for log groups in the
+   * stack account and region (see AWS docs for cross-account export).
+   */
+  CLOUD_WATCH_LOG_ARCHIVE_BUCKET: 'CloudWatchLogArchiveBucket',
 } as const;
 
 /**
@@ -56,11 +62,12 @@ export interface S3SecureBucketProps extends s3.BucketProps {
 
 /**
  * S3 bucket with opinionated secure defaults: private ACLs, block public access, TLS-only access,
- * and encryption (S3-managed for log/origin types; KMS-managed by default otherwise).
+ * and encryption (S3-managed for log/origin/archive types; KMS-managed by default otherwise).
  *
  * @remarks
  * - {@link S3SecureBucketType.DEPLOYMENT_PIPELINE_ARTIFACT_BUCKET}: may attach a deploy-role policy when a non-default bootstrap qualifier is present.
  * - {@link S3SecureBucketType.ACCESS_LOG_BUCKET}: adds log-writer principals; see {@link S3SecureBucketType.ACCESS_LOG_BUCKET} and {@link S3SecureBucket#accessLogBucketPolicyDependable}.
+ * - {@link S3SecureBucketType.CLOUD_WATCH_LOG_ARCHIVE_BUCKET}: adds CloudWatch Logs export principals (`logs.<region>.amazonaws.com`).
  */
 export class S3SecureBucket extends s3.Bucket {
   /**
@@ -87,7 +94,11 @@ export class S3SecureBucket extends s3.Bucket {
       ...props,
       removalPolicy: RemovalPolicy.RETAIN,
       encryption: (() => {
-        if (bucketType === S3SecureBucketType.CLOUDFRONT_ORIGIN_BUCKET || bucketType === S3SecureBucketType.ACCESS_LOG_BUCKET) {
+        if (
+          bucketType === S3SecureBucketType.CLOUDFRONT_ORIGIN_BUCKET
+          || bucketType === S3SecureBucketType.ACCESS_LOG_BUCKET
+          || bucketType === S3SecureBucketType.CLOUD_WATCH_LOG_ARCHIVE_BUCKET
+        ) {
           return s3.BucketEncryption.S3_MANAGED;
         }
         return props?.encryption || s3.BucketEncryption.KMS_MANAGED;
@@ -205,6 +216,44 @@ export class S3SecureBucket extends s3.Bucket {
         resources: [
           awsLogsPrefixResource,
         ],
+      }));
+    }
+
+    if (bucketType === S3SecureBucketType.CLOUD_WATCH_LOG_ARCHIVE_BUCKET) {
+      const logsExportPrincipal = new iam.ServicePrincipal(`logs.${region}.amazonaws.com`);
+      const sourceLogGroupArn = `arn:aws:logs:${region}:${account}:log-group:*`;
+
+      this.addToResourcePolicy(new iam.PolicyStatement({
+        sid: 'AllowCloudWatchLogsExportGetBucketAcl',
+        effect: iam.Effect.ALLOW,
+        principals: [logsExportPrincipal],
+        actions: ['s3:GetBucketAcl'],
+        resources: [this.bucketArn],
+        conditions: {
+          StringEquals: {
+            'aws:SourceAccount': [account],
+          },
+          ArnLike: {
+            'aws:SourceArn': [sourceLogGroupArn],
+          },
+        },
+      }));
+
+      this.addToResourcePolicy(new iam.PolicyStatement({
+        sid: 'AllowCloudWatchLogsExportPutObject',
+        effect: iam.Effect.ALLOW,
+        principals: [logsExportPrincipal],
+        actions: ['s3:PutObject'],
+        resources: [`${this.bucketArn}/*`],
+        conditions: {
+          StringEquals: {
+            's3:x-amz-acl': 'bucket-owner-full-control',
+            'aws:SourceAccount': [account],
+          },
+          ArnLike: {
+            'aws:SourceArn': [sourceLogGroupArn],
+          },
+        },
       }));
     }
   }
