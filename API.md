@@ -4,7 +4,7 @@
 
 ### S3SecureBucket <a name="S3SecureBucket" id="s3-secure-bucket.S3SecureBucket"></a>
 
-S3 bucket with opinionated secure defaults: private ACLs, block public access, TLS-only access, and encryption (S3-managed for log/origin types;
+S3 bucket with opinionated secure defaults: private ACLs, block public access, TLS-only access, and encryption (S3-managed for log/origin/archive types;
 
 KMS-managed by default otherwise).
 
