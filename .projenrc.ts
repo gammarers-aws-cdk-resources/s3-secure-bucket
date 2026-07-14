@@ -37,21 +37,9 @@ const project = new awscdk.AwsCdkConstructLibrary({
       'yicr',
     ],
   },
-  jestOptions: {
-    extraCliOptions: ['--silent'],
-  },
   tsconfigDev: {
     compilerOptions: {
       strict: true,
-    },
-  },
-  lambdaOptions: {
-    // target node.js runtime
-    runtime: awscdk.LambdaRuntime.NODEJS_24_X,
-    bundlingOptions: {
-      // list of node modules to exclude from the bundle
-      externals: ['@aws-sdk/*'],
-      sourcemap: true,
     },
   },
 });
