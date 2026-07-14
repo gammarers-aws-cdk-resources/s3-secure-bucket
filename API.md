@@ -20,7 +20,7 @@ new S3SecureBucket(scope: Construct, id: string, props?: S3SecureBucketProps)
 | --- | --- | --- |
 | <code><a href="#s3-secure-bucket.S3SecureBucket.Initializer.parameter.scope">scope</a></code> | <code>constructs.Construct</code> | - Parent construct, typically a {@link Stack}. |
 | <code><a href="#s3-secure-bucket.S3SecureBucket.Initializer.parameter.id">id</a></code> | <code>string</code> | - Construct ID (stable logical ID segment). |
-| <code><a href="#s3-secure-bucket.S3SecureBucket.Initializer.parameter.props">props</a></code> | <code><a href="#s3-secure-bucket.S3SecureBucketProps">S3SecureBucketProps</a></code> | - Optional {@link s3.BucketProps} plus {@link S3SecureBucketProps.bucketType} and `eventBridgeEnabled` (applied via L1 override when true). |
+| <code><a href="#s3-secure-bucket.S3SecureBucket.Initializer.parameter.props">props</a></code> | <code><a href="#s3-secure-bucket.S3SecureBucketProps">S3SecureBucketProps</a></code> | - Optional {@link S3SecureBucketProps}; |
 
 ---
 
@@ -44,7 +44,10 @@ Construct ID (stable logical ID segment).
 
 - *Type:* <a href="#s3-secure-bucket.S3SecureBucketProps">S3SecureBucketProps</a>
 
-Optional {@link s3.BucketProps} plus {@link S3SecureBucketProps.bucketType} and `eventBridgeEnabled` (applied via L1 override when true).
+Optional {@link S3SecureBucketProps};
+
+secure defaults override several {@link s3.BucketProps} fields.
+When `eventBridgeEnabled` is `true`, EventBridge notification is enabled via an L1 property override.
 
 ---
 
@@ -1351,9 +1354,10 @@ Uniquely identifies this class.
 
 ### S3SecureBucketProps <a name="S3SecureBucketProps" id="s3-secure-bucket.S3SecureBucketProps"></a>
 
-Construction properties for {@link S3SecureBucket}.
+Construction properties for {@link S3SecureBucket }.
 
-Extends {@link s3.BucketProps}; several fields receive secure defaults inside the construct.
+Extends {@link s3.BucketProps}. Several fields receive secure defaults inside the construct
+and may be overridden unless documented otherwise on {@link S3SecureBucket }.
 
 #### Initializer <a name="Initializer" id="s3-secure-bucket.S3SecureBucketProps.Initializer"></a>
 

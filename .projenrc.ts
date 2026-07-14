@@ -4,10 +4,10 @@ const project = new awscdk.AwsCdkConstructLibrary({
   authorAddress: 'yicr@users.noreply.github.com',
   cdkVersion: '2.232.0',
   defaultReleaseBranch: 'main',
-  typescriptVersion: '5.9.x',
-  jsiiVersion: '5.9.x',
+  typescriptVersion: '6.0.x',
+  jsiiVersion: '6.0.x',
   name: 's3-secure-bucket',
-  packageManager: javascript.NodePackageManager.YARN_CLASSIC,
+  packageManager: javascript.NodePackageManager.NPM,
   projenrcTs: true,
   repositoryUrl: 'https://github.com/gammarers-aws-cdk-resources/s3-secure-bucket.git',
   description: 'S3 Secure Bucket is a construct that creates a secure bucket with encryption, logging, and other security features.',
@@ -37,21 +37,9 @@ const project = new awscdk.AwsCdkConstructLibrary({
       'yicr',
     ],
   },
-  jestOptions: {
-    extraCliOptions: ['--silent'],
-  },
   tsconfigDev: {
     compilerOptions: {
       strict: true,
-    },
-  },
-  lambdaOptions: {
-    // target node.js runtime
-    runtime: awscdk.LambdaRuntime.NODEJS_24_X,
-    bundlingOptions: {
-      // list of node modules to exclude from the bundle
-      externals: ['@aws-sdk/*'],
-      sourcemap: true,
     },
   },
 });

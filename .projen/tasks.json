@@ -154,7 +154,7 @@
       "description": "Install project dependencies and update lockfile (non-frozen)",
       "steps": [
         {
-          "exec": "yarn install --check-files"
+          "exec": "npm install"
         }
       ]
     },
@@ -163,7 +163,7 @@
       "description": "Install project dependencies using frozen lockfile",
       "steps": [
         {
-          "exec": "yarn install --check-files --frozen-lockfile"
+          "exec": "npm ci"
         }
       ]
     },
@@ -250,7 +250,7 @@
       "description": "Run tests",
       "steps": [
         {
-          "exec": "jest --silent --passWithNoTests --updateSnapshot",
+          "exec": "jest --passWithNoTests --updateSnapshot",
           "receiveArgs": true
         },
         {
@@ -304,12 +304,12 @@
           ]
         },
         {
-          "exec": "yarn install --check-files"
+          "exec": "npm install"
         },
         {
           "execArgs": [
-            "yarn",
-            "upgrade",
+            "npm",
+            "update",
             "@stylistic/eslint-plugin",
             "@types/jest",
             "@types/node",
