@@ -1,6 +1,6 @@
 import { DefaultStackSynthesizer } from 'aws-cdk-lib';
 import * as iam from 'aws-cdk-lib/aws-iam';
-import { BucketPolicyContext } from './types';
+import { BucketPolicyApplyResult, BucketPolicyContext } from './types';
 
 /**
  * Grants the CDK deploy role full S3 access when a non-default bootstrap qualifier is in use.
@@ -9,15 +9,16 @@ import { BucketPolicyContext } from './types';
  * ({@link DefaultStackSynthesizer.DEFAULT_QUALIFIER}).
  *
  * @param context - Bucket and owning stack (account, region, and synthesizer qualifier).
+ * @returns An empty result when no policy is applied or after the deploy-role policy is attached.
  */
 export const applyDeploymentPipelineArtifactPolicy = ({
   bucket,
   stack,
-}: BucketPolicyContext): void => {
+}: BucketPolicyContext): BucketPolicyApplyResult => {
   const qualifier = stack.synthesizer.bootstrapQualifier;
 
   if (!qualifier || qualifier === DefaultStackSynthesizer.DEFAULT_QUALIFIER) {
-    return;
+    return {};
   }
 
   const { account, region } = stack;
@@ -34,4 +35,6 @@ export const applyDeploymentPipelineArtifactPolicy = ({
       new iam.ArnPrincipal(`arn:aws:iam::${account}:role/cdk-${qualifier}-deploy-role-${account}-${region}`),
     ],
   }));
+
+  return {};
 };

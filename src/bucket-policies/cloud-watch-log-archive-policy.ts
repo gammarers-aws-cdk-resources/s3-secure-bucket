@@ -1,5 +1,5 @@
 import * as iam from 'aws-cdk-lib/aws-iam';
-import { BucketPolicyContext } from './types';
+import { BucketPolicyApplyResult, BucketPolicyContext } from './types';
 
 /**
  * Adds resource policies for CloudWatch Logs export tasks in the stack account and region.
@@ -12,11 +12,12 @@ import { BucketPolicyContext } from './types';
  * For cross-account export, extend the bucket policy with additional source accounts and ARNs.
  *
  * @param context - Bucket and owning stack (account and region are read from `stack`).
+ * @returns An empty result after export policies are attached.
  */
 export const applyCloudWatchLogArchivePolicy = ({
   bucket,
   stack,
-}: BucketPolicyContext): void => {
+}: BucketPolicyContext): BucketPolicyApplyResult => {
   const { account, region } = stack;
   const logsExportPrincipal = new iam.ServicePrincipal(`logs.${region}.amazonaws.com`);
   const sourceLogGroupArn = `arn:aws:logs:${region}:${account}:log-group:*`;
@@ -53,4 +54,6 @@ export const applyCloudWatchLogArchivePolicy = ({
       },
     },
   }));
+
+  return {};
 };

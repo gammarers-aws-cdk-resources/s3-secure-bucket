@@ -1,8 +1,7 @@
 import { Token } from 'aws-cdk-lib';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import { FactName, RegionInfo } from 'aws-cdk-lib/region-info';
-import { IDependable } from 'constructs';
-import { BucketPolicyContext } from './types';
+import { BucketPolicyApplyResult, BucketPolicyContext } from './types';
 
 /**
  * Adds resource policies for ALB/NLB, CloudFront standard logging (v2), and S3 server access logging.
@@ -14,13 +13,13 @@ import { BucketPolicyContext } from './types';
  * - `logging.s3.amazonaws.com`
  *
  * @param context - Bucket and owning stack (account and region are read from `stack`).
- * @returns A dependency target for the first (ELB) policy statement so load balancer log enablement
- * can wait until the bucket policy exists.
+ * @returns A result containing {@link BucketPolicyApplyResult.accessLogBucketPolicyDependable} for the
+ * first (ELB) policy statement so load balancer log enablement can wait until the bucket policy exists.
  */
 export const applyAccessLogBucketPolicy = ({
   bucket,
   stack,
-}: BucketPolicyContext): IDependable => {
+}: BucketPolicyContext): BucketPolicyApplyResult => {
   const awsLogsPrefixResource = `${bucket.bucketArn}/AWSLogs/${stack.account}/*`;
 
   // Allow ALB / NLB log delivery (modern service principal path; also required in opt-in regions).
@@ -85,5 +84,7 @@ export const applyAccessLogBucketPolicy = ({
     ],
   }));
 
-  return albLogDeliveryPolicyResult.policyDependable ?? bucket;
+  return {
+    accessLogBucketPolicyDependable: albLogDeliveryPolicyResult.policyDependable ?? bucket,
+  };
 };

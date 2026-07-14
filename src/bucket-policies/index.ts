@@ -24,19 +24,15 @@ export const applyBucketPolicies = (
   context: BucketPolicyContext,
 ): BucketPolicyApplyResult => {
   if (bucketType === S3SecureBucketType.DEPLOYMENT_PIPELINE_ARTIFACT_BUCKET) {
-    applyDeploymentPipelineArtifactPolicy(context);
-    return {};
+    return applyDeploymentPipelineArtifactPolicy(context);
   }
 
   if (bucketType === S3SecureBucketType.ACCESS_LOG_BUCKET) {
-    return {
-      accessLogBucketPolicyDependable: applyAccessLogBucketPolicy(context),
-    };
+    return applyAccessLogBucketPolicy(context);
   }
 
   if (bucketType === S3SecureBucketType.CLOUD_WATCH_LOG_ARCHIVE_BUCKET) {
-    applyCloudWatchLogArchivePolicy(context);
-    return {};
+    return applyCloudWatchLogArchivePolicy(context);
   }
 
   return {};
