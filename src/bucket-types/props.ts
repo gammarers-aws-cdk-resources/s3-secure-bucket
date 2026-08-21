@@ -1,4 +1,5 @@
 import * as s3 from 'aws-cdk-lib/aws-s3';
+import { AccessLogDeliveryScope } from './access-log-delivery-scope';
 import { S3SecureBucketType } from './bucket-type';
 
 /**
@@ -15,4 +16,18 @@ export interface S3SecureBucketProps extends s3.BucketProps {
    * @default {@link S3SecureBucketType.DEFAULT_BUCKET}
    */
   readonly bucketType?: S3SecureBucketType;
+
+  /**
+   * Account or organization scope for {@link S3SecureBucketType.ACCESS_LOG_BUCKET} writers.
+   *
+   * Specify exactly one of {@link AccessLogDeliveryScope.allowedSourceAccountIds} or
+   * {@link AccessLogDeliveryScope.organizationId}. When omitted, only the stack account
+   * may deliver logs (`AWSLogs/<stack account>/*`).
+   *
+   * Supported only when {@link S3SecureBucketProps.bucketType} is
+   * {@link S3SecureBucketType.ACCESS_LOG_BUCKET}.
+   *
+   * @default stack account only
+   */
+  readonly accessLogDelivery?: AccessLogDeliveryScope;
 }
