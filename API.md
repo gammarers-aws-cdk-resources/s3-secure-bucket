@@ -1352,6 +1352,65 @@ Uniquely identifies this class.
 
 ## Structs <a name="Structs" id="Structs"></a>
 
+### AccessLogDeliveryScope <a name="AccessLogDeliveryScope" id="s3-secure-bucket.AccessLogDeliveryScope"></a>
+
+Account scope for {@link S3SecureBucketType.ACCESS_LOG_BUCKET } resource policies.
+
+Specify **exactly one** of {@link AccessLogDeliveryScope.allowedSourceAccountIds} or
+{@link AccessLogDeliveryScope.organizationId}. Omit {@link S3SecureBucketProps.accessLogDelivery }
+to allow only the stack account (default).
+
+jsii does not support a discriminated union of structs, so exclusivity is enforced at construct time.
+
+#### Initializer <a name="Initializer" id="s3-secure-bucket.AccessLogDeliveryScope.Initializer"></a>
+
+```typescript
+import { AccessLogDeliveryScope } from 's3-secure-bucket'
+
+const accessLogDeliveryScope: AccessLogDeliveryScope = { ... }
+```
+
+#### Properties <a name="Properties" id="Properties"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#s3-secure-bucket.AccessLogDeliveryScope.property.allowedSourceAccountIds">allowedSourceAccountIds</a></code> | <code>string[]</code> | Account IDs allowed to write under `AWSLogs/<accountId>/*`. |
+| <code><a href="#s3-secure-bucket.AccessLogDeliveryScope.property.organizationId">organizationId</a></code> | <code>string</code> | AWS Organizations ID (`o-` followed by 10–32 lowercase letters or digits). |
+
+---
+
+##### `allowedSourceAccountIds`<sup>Optional</sup> <a name="allowedSourceAccountIds" id="s3-secure-bucket.AccessLogDeliveryScope.property.allowedSourceAccountIds"></a>
+
+```typescript
+public readonly allowedSourceAccountIds: string[];
+```
+
+- *Type:* string[]
+- *Default:* undefined (do not use an explicit account list)
+
+Account IDs allowed to write under `AWSLogs/<accountId>/*`.
+
+The list is used as specified; include the stack account if that account should also deliver logs.
+Duplicate IDs are ignored. Mutually exclusive with {@link AccessLogDeliveryScope.organizationId}.
+
+---
+
+##### `organizationId`<sup>Optional</sup> <a name="organizationId" id="s3-secure-bucket.AccessLogDeliveryScope.property.organizationId"></a>
+
+```typescript
+public readonly organizationId: string;
+```
+
+- *Type:* string
+- *Default:* undefined (do not use an organization-wide policy)
+
+AWS Organizations ID (`o-` followed by 10–32 lowercase letters or digits).
+
+Allows log delivery from accounts in the organization via `aws:SourceOrgID`,
+with resource `AWSLogs/*`. Mutually exclusive with {@link AccessLogDeliveryScope.allowedSourceAccountIds}.
+
+---
+
 ### S3SecureBucketProps <a name="S3SecureBucketProps" id="s3-secure-bucket.S3SecureBucketProps"></a>
 
 Construction properties for {@link S3SecureBucket }.
@@ -1405,6 +1464,7 @@ const s3SecureBucketProps: S3SecureBucketProps = { ... }
 | <code><a href="#s3-secure-bucket.S3SecureBucketProps.property.websiteIndexDocument">websiteIndexDocument</a></code> | <code>string</code> | The name of the index document (e.g. "index.html") for the website. Enables static website hosting for this bucket. |
 | <code><a href="#s3-secure-bucket.S3SecureBucketProps.property.websiteRedirect">websiteRedirect</a></code> | <code>aws-cdk-lib.aws_s3.RedirectTarget</code> | Specifies the redirect behavior of all requests to a website endpoint of a bucket. |
 | <code><a href="#s3-secure-bucket.S3SecureBucketProps.property.websiteRoutingRules">websiteRoutingRules</a></code> | <code>aws-cdk-lib.aws_s3.RoutingRule[]</code> | Rules that define when a redirect is applied and the redirect behavior. |
+| <code><a href="#s3-secure-bucket.S3SecureBucketProps.property.accessLogDelivery">accessLogDelivery</a></code> | <code><a href="#s3-secure-bucket.AccessLogDeliveryScope">AccessLogDeliveryScope</a></code> | Account or organization scope for {@link S3SecureBucketType.ACCESS_LOG_BUCKET} writers. |
 | <code><a href="#s3-secure-bucket.S3SecureBucketProps.property.bucketType">bucketType</a></code> | <code>string</code> | Selects encryption defaults and optional resource-policy statements. |
 
 ---
@@ -1916,6 +1976,26 @@ public readonly websiteRoutingRules: RoutingRule[];
 - *Default:* No redirection rules.
 
 Rules that define when a redirect is applied and the redirect behavior.
+
+---
+
+##### `accessLogDelivery`<sup>Optional</sup> <a name="accessLogDelivery" id="s3-secure-bucket.S3SecureBucketProps.property.accessLogDelivery"></a>
+
+```typescript
+public readonly accessLogDelivery: AccessLogDeliveryScope;
+```
+
+- *Type:* <a href="#s3-secure-bucket.AccessLogDeliveryScope">AccessLogDeliveryScope</a>
+- *Default:* stack account only
+
+Account or organization scope for {@link S3SecureBucketType.ACCESS_LOG_BUCKET} writers.
+
+Specify exactly one of {@link AccessLogDeliveryScope.allowedSourceAccountIds} or
+{@link AccessLogDeliveryScope.organizationId}. When omitted, only the stack account
+may deliver logs (`AWSLogs/<stack account>/*`).
+
+Supported only when {@link S3SecureBucketProps.bucketType} is
+{@link S3SecureBucketType.ACCESS_LOG_BUCKET}.
 
 ---
 
