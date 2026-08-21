@@ -27,7 +27,10 @@ export const S3SecureBucketType = {
   DEFAULT_BUCKET: 'DefaultBucket',
   /**
    * Centralized access logs for producers such as ALB/NLB, CloudFront standard logging (v2),
-   * and S3 server access logging. Grants `s3:PutObject` on `AWSLogs/<account>/*` only (no read/list).
+   * and S3 server access logging. Grants `s3:PutObject` on `AWSLogs/...` prefixes only (no read/list).
+   *
+   * By default the prefix is `AWSLogs/<stack account>/*`. Override with
+   * {@link S3SecureBucketProps.accessLogDelivery} to allow an explicit account list or an AWS Organization.
    *
    * The regional ELBv2 log-delivery account ID (legacy path alongside the log delivery service principal)
    * is resolved from `aws-cdk-lib/region-info` at synthesis time when {@link Stack#region} is known,

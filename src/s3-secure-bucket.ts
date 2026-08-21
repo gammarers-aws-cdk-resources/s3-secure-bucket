@@ -24,7 +24,8 @@ import {
  *
  * Bucket-type-specific behavior:
  * - {@link S3SecureBucketType.DEPLOYMENT_PIPELINE_ARTIFACT_BUCKET}: may attach a deploy-role policy when a non-default bootstrap qualifier is present.
- * - {@link S3SecureBucketType.ACCESS_LOG_BUCKET}: adds log-writer principals; see {@link S3SecureBucket#accessLogBucketPolicyDependable}.
+ * - {@link S3SecureBucketType.ACCESS_LOG_BUCKET}: adds log-writer principals; see {@link S3SecureBucket#accessLogBucketPolicyDependable}
+ *   and {@link S3SecureBucketProps.accessLogDelivery}.
  * - {@link S3SecureBucketType.CLOUD_WATCH_LOG_ARCHIVE_BUCKET}: adds CloudWatch Logs export principals (`logs.<region>.amazonaws.com`).
  */
 export class S3SecureBucket extends s3.Bucket {
@@ -78,9 +79,13 @@ export class S3SecureBucket extends s3.Bucket {
     }
 
     const stack = Stack.of(this);
+    if (props?.accessLogDelivery !== undefined && bucketType !== S3SecureBucketType.ACCESS_LOG_BUCKET) {
+      throw new Error('accessLogDelivery is only supported when bucketType is ACCESS_LOG_BUCKET');
+    }
     const policyResult = applyBucketPolicies(bucketType, {
       bucket: this,
       stack,
+      accessLogDelivery: props?.accessLogDelivery,
     });
     this.accessLogBucketPolicyDependable = policyResult.accessLogBucketPolicyDependable;
   }

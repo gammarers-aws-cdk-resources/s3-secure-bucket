@@ -172,6 +172,176 @@ describe('S3SecureBucket bucketType=ACCESS_LOG_BUCKET (us-east-1)', () => {
   });
 });
 
+describe('S3SecureBucket bucketType=ACCESS_LOG_BUCKET accessLogDelivery', () => {
+  it('allows an explicit source account list on AWSLogs prefixes', () => {
+    const app = new App();
+    const stack = new Stack(app, 'AccountListLogStack', {
+      env: {
+        account: '123456789012',
+        region: 'us-east-1',
+      },
+    });
+    new S3SecureBucket(stack, 'AccessLogBucket', {
+      bucketType: S3SecureBucketType.ACCESS_LOG_BUCKET,
+      accessLogDelivery: {
+        allowedSourceAccountIds: ['111111111111', '222222222222'],
+      },
+    });
+    const template = Template.fromStack(stack);
+    const resources = [
+      awsLogsPrefixMatcher('AccessLogBucket', '111111111111'),
+      awsLogsPrefixMatcher('AccessLogBucket', '222222222222'),
+    ];
+
+    template.hasResourceProperties('AWS::S3::BucketPolicy', {
+      PolicyDocument: Match.objectLike({
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Effect: 'Allow',
+            Action: 's3:PutObject',
+            Principal: { Service: 'logdelivery.elasticloadbalancing.amazonaws.com' },
+            Resource: resources,
+          }),
+          Match.objectLike({
+            Effect: 'Allow',
+            Action: 's3:PutObject',
+            Principal: { Service: 'delivery.logs.amazonaws.com' },
+            Resource: resources,
+          }),
+          Match.objectLike({
+            Effect: 'Allow',
+            Action: 's3:PutObject',
+            Principal: { Service: 'logging.s3.amazonaws.com' },
+            Resource: resources,
+          }),
+        ]),
+      }),
+    });
+  });
+
+  it('allows organization-wide delivery with aws:SourceOrgID on service principals', () => {
+    const app = new App();
+    const stack = new Stack(app, 'OrganizationLogStack', {
+      env: {
+        account: '123456789012',
+        region: 'us-east-1',
+      },
+    });
+    new S3SecureBucket(stack, 'AccessLogBucket', {
+      bucketType: S3SecureBucketType.ACCESS_LOG_BUCKET,
+      accessLogDelivery: {
+        organizationId: 'o-abcdefghijklmnopqrst',
+      },
+    });
+    const template = Template.fromStack(stack);
+    const wildcardResource = Match.objectLike({
+      'Fn::Join': [
+        '',
+        Match.arrayWith([
+          Match.objectLike({
+            'Fn::GetAtt': [
+              Match.stringLikeRegexp('AccessLogBucket'),
+              'Arn',
+            ],
+          }),
+          '/AWSLogs/*',
+        ]),
+      ],
+    });
+    const organizationCondition = {
+      StringEquals: {
+        'aws:SourceOrgID': 'o-abcdefghijklmnopqrst',
+      },
+    };
+    const expectedElbv2Account = RegionInfo.get('us-east-1').elbv2Account;
+    if (expectedElbv2Account === undefined) {
+      throw new Error('Expected RegionInfo ELBv2 account for us-east-1');
+    }
+
+    template.hasResourceProperties('AWS::S3::BucketPolicy', {
+      PolicyDocument: Match.objectLike({
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Effect: 'Allow',
+            Action: 's3:PutObject',
+            Principal: { Service: 'logdelivery.elasticloadbalancing.amazonaws.com' },
+            Resource: wildcardResource,
+            Condition: {
+              StringEquals: {
+                'aws:SourceOrgID': 'o-abcdefghijklmnopqrst',
+              },
+              ArnLike: {
+                'aws:SourceArn': 'arn:aws:elasticloadbalancing:*:*:loadbalancer/*',
+              },
+            },
+          }),
+          Match.objectLike({
+            Effect: 'Allow',
+            Action: 's3:PutObject',
+            Principal: {
+              AWS: {
+                'Fn::Join': [
+                  '',
+                  Match.arrayWith([
+                    Match.stringLikeRegexp(expectedElbv2Account),
+                  ]),
+                ],
+              },
+            },
+            Resource: wildcardResource,
+          }),
+          Match.objectLike({
+            Effect: 'Allow',
+            Action: 's3:PutObject',
+            Principal: { Service: 'delivery.logs.amazonaws.com' },
+            Resource: wildcardResource,
+            Condition: organizationCondition,
+          }),
+          Match.objectLike({
+            Effect: 'Allow',
+            Action: 's3:PutObject',
+            Principal: { Service: 'logging.s3.amazonaws.com' },
+            Resource: wildcardResource,
+            Condition: organizationCondition,
+          }),
+        ]),
+      }),
+    });
+  });
+
+  it('throws when accessLogDelivery is set on a non-access-log bucket type', () => {
+    const app = new App();
+    const stack = new Stack(app, 'InvalidTypeStack', {
+      env: {
+        account: '123456789012',
+        region: 'us-east-1',
+      },
+    });
+    expect(() => new S3SecureBucket(stack, 'DefaultBucket', {
+      accessLogDelivery: {
+        organizationId: 'o-abcdefghijklmnopqrst',
+      },
+    })).toThrow('accessLogDelivery is only supported when bucketType is ACCESS_LOG_BUCKET');
+  });
+
+  it('throws when both exclusive accessLogDelivery fields are set', () => {
+    const app = new App();
+    const stack = new Stack(app, 'BothFieldsStack', {
+      env: {
+        account: '123456789012',
+        region: 'us-east-1',
+      },
+    });
+    expect(() => new S3SecureBucket(stack, 'AccessLogBucket', {
+      bucketType: S3SecureBucketType.ACCESS_LOG_BUCKET,
+      accessLogDelivery: {
+        allowedSourceAccountIds: ['111111111111'],
+        organizationId: 'o-abcdefghijklmnopqrst',
+      },
+    })).toThrow('accessLogDelivery must specify exactly one of allowedSourceAccountIds or organizationId');
+  });
+});
+
 describe('S3SecureBucket bucketType=ACCESS_LOG_BUCKET (ap-northeast-1)', () => {
   it('resolves ELBv2 log delivery account from stack region (Tokyo)', () => {
     const app = new App();

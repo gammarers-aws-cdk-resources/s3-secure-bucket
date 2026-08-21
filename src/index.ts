@@ -5,4 +5,4 @@
  */
 export { S3SecureBucket } from './s3-secure-bucket';
 export { S3SecureBucketType } from './bucket-types';
-export type { S3SecureBucketProps } from './bucket-types';
+export type { AccessLogDeliveryScope, S3SecureBucketProps } from './bucket-types';

@@ -1,26 +1,56 @@
 import { Token } from 'aws-cdk-lib';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import { FactName, RegionInfo } from 'aws-cdk-lib/region-info';
+import { resolveAccessLogDelivery } from './resolve-access-log-delivery';
 import { BucketPolicyApplyResult, BucketPolicyContext } from './types';
+
+const ELB_SOURCE_ARN = 'arn:aws:elasticloadbalancing:*:*:loadbalancer/*';
 
 /**
  * Adds resource policies for ALB/NLB, CloudFront standard logging (v2), and S3 server access logging.
  *
- * Grants `s3:PutObject` on `AWSLogs/<stack.account>/*` to:
+ * Grants `s3:PutObject` on `AWSLogs/...` prefixes to:
  * - `logdelivery.elasticloadbalancing.amazonaws.com`
  * - The regional ELBv2 log-delivery account (when known)
  * - `delivery.logs.amazonaws.com`
  * - `logging.s3.amazonaws.com`
  *
- * @param context - Bucket and owning stack (account and region are read from `stack`).
+ * Prefixes default to `AWSLogs/<stack.account>/*`. {@link BucketPolicyContext.accessLogDelivery}
+ * can widen this to an explicit account list or to `AWSLogs/*` constrained by `aws:SourceOrgID`.
+ *
+ * @param context - Bucket, owning stack, and optional delivery scope.
  * @returns A result containing {@link BucketPolicyApplyResult.accessLogBucketPolicyDependable} for the
  * first (ELB) policy statement so load balancer log enablement can wait until the bucket policy exists.
  */
 export const applyAccessLogBucketPolicy = ({
   bucket,
   stack,
+  accessLogDelivery,
 }: BucketPolicyContext): BucketPolicyApplyResult => {
-  const awsLogsPrefixResource = `${bucket.bucketArn}/AWSLogs/${stack.account}/*`;
+  const { awsLogsResources, organizationId } = resolveAccessLogDelivery(
+    bucket.bucketArn,
+    stack.account,
+    accessLogDelivery,
+  );
+
+  const organizationConditions = organizationId === undefined
+    ? undefined
+    : {
+      StringEquals: {
+        'aws:SourceOrgID': organizationId,
+      },
+    };
+
+  const albOrganizationConditions = organizationId === undefined
+    ? undefined
+    : {
+      StringEquals: {
+        'aws:SourceOrgID': organizationId,
+      },
+      ArnLike: {
+        'aws:SourceArn': ELB_SOURCE_ARN,
+      },
+    };
 
   // Allow ALB / NLB log delivery (modern service principal path; also required in opt-in regions).
   const albLogDeliveryPolicyResult = bucket.addToResourcePolicy(new iam.PolicyStatement({
@@ -31,9 +61,8 @@ export const applyAccessLogBucketPolicy = ({
     actions: [
       's3:PutObject',
     ],
-    resources: [
-      awsLogsPrefixResource,
-    ],
+    resources: awsLogsResources,
+    conditions: albOrganizationConditions,
   }));
 
   // In non–opt-in regions (for example ap-northeast-1), access logs are often delivered using the
@@ -50,9 +79,8 @@ export const applyAccessLogBucketPolicy = ({
       actions: [
         's3:PutObject',
       ],
-      resources: [
-        awsLogsPrefixResource,
-      ],
+      resources: awsLogsResources,
+      // The ELBv2 delivery account is not an organization member; do not attach aws:SourceOrgID.
     }));
   }
 
@@ -65,9 +93,8 @@ export const applyAccessLogBucketPolicy = ({
     actions: [
       's3:PutObject',
     ],
-    resources: [
-      awsLogsPrefixResource,
-    ],
+    resources: awsLogsResources,
+    conditions: organizationConditions,
   }));
 
   // Allow S3 server access logging to write logs when required by configuration
@@ -79,9 +106,8 @@ export const applyAccessLogBucketPolicy = ({
     actions: [
       's3:PutObject',
     ],
-    resources: [
-      awsLogsPrefixResource,
-    ],
+    resources: awsLogsResources,
+    conditions: organizationConditions,
   }));
 
   return {
