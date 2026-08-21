@@ -20,7 +20,7 @@ AWS CDK v2 construct library: an [`s3.Bucket`](https://docs.aws.amazon.com/cdk/a
   - **`DEFAULT_BUCKET`**: general-purpose secure bucket (KMS-managed encryption by default)
   - **`DEPLOYMENT_PIPELINE_ARTIFACT_BUCKET`**: optional `s3:*` grant for the CDK deploy role when using a **non-default** bootstrap qualifier
   - **`CLOUDFRONT_ORIGIN_BUCKET`**: S3-managed encryption for typical CloudFront origin use
-  - **`ACCESS_LOG_BUCKET`**: `s3:PutObject` on `AWSLogs/<account>/*` for ALB/NLB (`logdelivery.elasticloadbalancing.amazonaws.com` + regional **ELBv2 account** from `aws-cdk-lib/region-info` when known), CloudFront standard logging (`delivery.logs.amazonaws.com`), and S3 server access logging (`logging.s3.amazonaws.com`)
+  - **`ACCESS_LOG_BUCKET`**: `s3:PutObject` for ALB/NLB (`logdelivery.elasticloadbalancing.amazonaws.com` + regional **ELBv2 account** from `aws-cdk-lib/region-info` when known), CloudFront standard logging (`delivery.logs.amazonaws.com`), and S3 server access logging (`logging.s3.amazonaws.com`). Writers default to `AWSLogs/<stack account>/*`; override with `accessLogDelivery` (`allowedSourceAccountIds` or `organizationId`)
   - **`CLOUD_WATCH_LOG_ARCHIVE_BUCKET`**: `s3:GetBucketAcl` and `s3:PutObject` (`bucket-owner-full-control`) for CloudWatch Logs export tasks (`logs.<region>.amazonaws.com`, same-account log groups in the stack Region)
 - **`accessLogBucketPolicyDependable`** (access-log buckets only): use with `loadBalancer.node.addDependency(...)` so ALB/NLB access-log enablement runs after the bucket policy exists (avoids validation `PutObject` failures)
 
@@ -102,6 +102,26 @@ const accessLogBucket = new S3SecureBucket(stack, 'AccessLogBucket', {
 // loadBalancer.node.addDependency(accessLogBucket.accessLogBucketPolicyDependable!);
 ```
 
+To accept logs from other accounts, set **exactly one** of the following on `accessLogDelivery` (the stack account is **not** added automatically):
+
+```typescript
+const multiAccountLogBucket = new S3SecureBucket(stack, 'MultiAccountAccessLogBucket', {
+  bucketType: S3SecureBucketType.ACCESS_LOG_BUCKET,
+  accessLogDelivery: {
+    allowedSourceAccountIds: ['111111111111', '222222222222'],
+  },
+});
+
+const organizationLogBucket = new S3SecureBucket(stack, 'OrganizationAccessLogBucket', {
+  bucketType: S3SecureBucketType.ACCESS_LOG_BUCKET,
+  accessLogDelivery: {
+    organizationId: 'o-xxxxxxxxxx',
+  },
+});
+```
+
+Organization scope uses resource `AWSLogs/*` and `aws:SourceOrgID` on the log-delivery **service** principals. The regional ELBv2 account statement is not organization-conditioned (that principal is not an organization member).
+
 Wire logging on the load balancer using your normal approach (for example L1 attributes or another construct). This library only configures the **bucket** and its **resource policy**.
 
 ### CloudWatch Logs export archive bucket
@@ -130,6 +150,7 @@ For cross-account export, extend the bucket policy with additional `aws:SourceAc
 | Property | Type | Default | Description |
 | --- | --- | --- | --- |
 | `bucketType` | `S3SecureBucketType` | `DEFAULT_BUCKET` | Selects encryption defaults and optional resource-policy statements. |
+| `accessLogDelivery` | `AccessLogDeliveryScope` | stack account only | `ACCESS_LOG_BUCKET` only. Exactly one of `allowedSourceAccountIds` or `organizationId`. |
 | *(inherited)* | `s3.BucketProps` | — | All other `Bucket` properties are passed through (some receive overrides inside the construct). |
 
 ### `S3SecureBucketType` values
@@ -139,7 +160,7 @@ For cross-account export, extend the bucket policy with additional `aws:SourceAc
 | `S3SecureBucketType.DEFAULT_BUCKET` | General-purpose secure bucket |
 | `S3SecureBucketType.DEPLOYMENT_PIPELINE_ARTIFACT_BUCKET` | CDK pipeline artifact bucket (custom bootstrap qualifier) |
 | `S3SecureBucketType.CLOUDFRONT_ORIGIN_BUCKET` | CloudFront origin bucket |
-| `S3SecureBucketType.ACCESS_LOG_BUCKET` | Centralized access logs (`AWSLogs/<account>/*` writers only) |
+| `S3SecureBucketType.ACCESS_LOG_BUCKET` | Centralized access logs (`AWSLogs/<account>/*` by default; widen with `accessLogDelivery`) |
 | `S3SecureBucketType.CLOUD_WATCH_LOG_ARCHIVE_BUCKET` | CloudWatch Logs export archive |
 
 ### Read-only: `accessLogBucketPolicyDependable`
