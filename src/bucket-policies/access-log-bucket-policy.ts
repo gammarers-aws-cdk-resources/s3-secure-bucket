@@ -5,6 +5,8 @@ import { resolveAccessLogDelivery } from './resolve-access-log-delivery';
 import { BucketPolicyApplyResult, BucketPolicyContext } from './types';
 
 const ELB_SOURCE_ARN = 'arn:aws:elasticloadbalancing:*:*:loadbalancer/*';
+const S3_PUT_OBJECT = 's3:PutObject';
+const AWS_SOURCE_ORG_ID = 'aws:SourceOrgID';
 
 /**
  * Adds resource policies for ALB/NLB, CloudFront standard logging (v2), and S3 server access logging.
@@ -37,7 +39,7 @@ export const applyAccessLogBucketPolicy = ({
     ? undefined
     : {
       StringEquals: {
-        'aws:SourceOrgID': organizationId,
+        [AWS_SOURCE_ORG_ID]: organizationId,
       },
     };
 
@@ -45,7 +47,7 @@ export const applyAccessLogBucketPolicy = ({
     ? undefined
     : {
       StringEquals: {
-        'aws:SourceOrgID': organizationId,
+        [AWS_SOURCE_ORG_ID]: organizationId,
       },
       ArnLike: {
         'aws:SourceArn': ELB_SOURCE_ARN,
@@ -59,7 +61,7 @@ export const applyAccessLogBucketPolicy = ({
       new iam.ServicePrincipal('logdelivery.elasticloadbalancing.amazonaws.com'),
     ],
     actions: [
-      's3:PutObject',
+      S3_PUT_OBJECT,
     ],
     resources: awsLogsResources,
     conditions: albOrganizationConditions,
@@ -77,7 +79,7 @@ export const applyAccessLogBucketPolicy = ({
         new iam.AccountPrincipal(elbAccountId),
       ],
       actions: [
-        's3:PutObject',
+        S3_PUT_OBJECT,
       ],
       resources: awsLogsResources,
       // The ELBv2 delivery account is not an organization member; do not attach aws:SourceOrgID.
@@ -91,7 +93,7 @@ export const applyAccessLogBucketPolicy = ({
       new iam.ServicePrincipal('delivery.logs.amazonaws.com'),
     ],
     actions: [
-      's3:PutObject',
+      S3_PUT_OBJECT,
     ],
     resources: awsLogsResources,
     conditions: organizationConditions,
@@ -104,7 +106,7 @@ export const applyAccessLogBucketPolicy = ({
       new iam.ServicePrincipal('logging.s3.amazonaws.com'),
     ],
     actions: [
-      's3:PutObject',
+      S3_PUT_OBJECT,
     ],
     resources: awsLogsResources,
     conditions: organizationConditions,

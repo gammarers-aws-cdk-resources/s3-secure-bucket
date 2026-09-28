@@ -6,8 +6,11 @@
 import { S3SecureBucketType } from '../bucket-types';
 import { applyAccessLogBucketPolicy } from './access-log-bucket-policy';
 import { applyCloudWatchLogArchivePolicy } from './cloud-watch-log-archive-policy';
+import { grantCloudFrontOriginRead } from './cloudfront-origin-policy';
 import { applyDeploymentPipelineArtifactPolicy } from './deployment-pipeline-artifact-policy';
 import { BucketPolicyApplyResult, BucketPolicyContext } from './types';
+
+export { grantCloudFrontOriginRead };
 
 /**
  * Applies resource policies for the given bucket type, if any.

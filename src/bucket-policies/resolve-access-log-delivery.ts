@@ -1,9 +1,9 @@
 import { Token } from 'aws-cdk-lib';
 import {
-  AccessLogDeliveryScope,
+  type AccessLogDeliveryScope,
   isAwsAccountId,
   isAwsOrganizationId,
-} from '../bucket-types/access-log-delivery-scope';
+} from '../bucket-types';
 
 /**
  * Resolved `AWSLogs` resource ARNs and optional organization condition value.
