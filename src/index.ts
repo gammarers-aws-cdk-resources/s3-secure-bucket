@@ -4,5 +4,6 @@
  * @packageDocumentation
  */
 export { S3SecureBucket } from './s3-secure-bucket';
-export { S3SecureBucketType } from './bucket-types';
-export type { AccessLogDeliveryScope, S3SecureBucketProps } from './bucket-types';
+export type { AccessLogDeliveryScope } from './core/access-log-delivery-scope';
+export { S3SecureBucketType } from './core/bucket-type';
+export type { S3SecureBucketProps } from './core/props';

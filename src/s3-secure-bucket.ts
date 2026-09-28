@@ -1,12 +1,12 @@
 import { RemovalPolicy, Stack } from 'aws-cdk-lib';
+import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import { Construct, IDependable } from 'constructs';
-import { applyBucketPolicies } from './bucket-policies';
-import {
-  resolveEncryptionDefault,
-  S3SecureBucketProps,
-  S3SecureBucketType,
-} from './bucket-types';
+import { S3SecureBucketType } from './core/bucket-type';
+import { resolveEncryptionDefault } from './core/encryption-default';
+import { applyBucketPolicies } from './core/policies/apply-bucket-policies';
+import { grantCloudFrontOriginRead } from './core/policies/cloudfront-origin';
+import { S3SecureBucketProps } from './core/props';
 
 /**
  * S3 bucket with opinionated secure defaults: private ACLs, block public access, TLS-only access,
@@ -27,8 +27,16 @@ import {
  * - {@link S3SecureBucketType.ACCESS_LOG_BUCKET}: adds log-writer principals; see {@link S3SecureBucket#accessLogBucketPolicyDependable}
  *   and {@link S3SecureBucketProps.accessLogDelivery}.
  * - {@link S3SecureBucketType.CLOUD_WATCH_LOG_ARCHIVE_BUCKET}: adds CloudWatch Logs export principals (`logs.<region>.amazonaws.com`).
+ * - {@link S3SecureBucketType.CLOUDFRONT_ORIGIN_BUCKET}: S3-managed encryption.
+ *   {@link S3SecureBucket#grantCloudFrontRead} allows `s3:GetObject` when the distribution cannot update this bucket policy.
+ *   `S3BucketOrigin.withOriginAccessControl` adds that statement itself.
  */
 export class S3SecureBucket extends s3.Bucket {
+  /**
+   * Preset selected at construction. Later grants use it to reject the wrong bucket type.
+   */
+  private readonly bucketType: S3SecureBucketType;
+
   /**
    * Set only when {@link S3SecureBucketProps.bucketType} is {@link S3SecureBucketType.ACCESS_LOG_BUCKET}.
    * Use as a dependency target so load balancer access-log enablement runs after the bucket policy
@@ -54,29 +62,21 @@ export class S3SecureBucket extends s3.Bucket {
       ...props,
       removalPolicy: RemovalPolicy.RETAIN,
       encryption: resolveEncryptionDefault(bucketType, props?.encryption),
-      accessControl: (() => {
-        if (!props?.accessControl) {
-          return s3.BucketAccessControl.PRIVATE;
-        }
-        return props.accessControl;
-      })(),
+      accessControl: props?.accessControl ?? s3.BucketAccessControl.PRIVATE,
       eventBridgeEnabled: undefined,
       publicReadAccess: false,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       enforceSSL: true,
       versioned: props?.versioned !== undefined ? props.versioned : true,
-      objectOwnership: (() => {
-        if (props?.objectOwnership) {
-          return props.objectOwnership;
-        }
-        return s3.ObjectOwnership.BUCKET_OWNER_ENFORCED;
-      })(),
+      objectOwnership: props?.objectOwnership ?? s3.ObjectOwnership.BUCKET_OWNER_ENFORCED,
     });
 
     const cfnBucket = this.node.defaultChild as s3.CfnBucket;
     if (props?.eventBridgeEnabled === true) {
       cfnBucket.addPropertyOverride('NotificationConfiguration.EventBridgeConfiguration.EventBridgeEnabled', true);
     }
+
+    this.bucketType = bucketType;
 
     const stack = Stack.of(this);
     if (props?.accessLogDelivery !== undefined && bucketType !== S3SecureBucketType.ACCESS_LOG_BUCKET) {
@@ -88,5 +88,31 @@ export class S3SecureBucket extends s3.Bucket {
       accessLogDelivery: props?.accessLogDelivery,
     });
     this.accessLogBucketPolicyDependable = policyResult.accessLogBucketPolicyDependable;
+  }
+
+  /**
+   * Allows one CloudFront distribution to read objects through origin access control.
+   *
+   * Adds `s3:GetObject` for `cloudfront.amazonaws.com` when `AWS:SourceArn` is
+   * {@link cloudfront.IDistribution.distributionArn}. Call once per distribution.
+   *
+   * `S3BucketOrigin.withOriginAccessControl` adds this same statement. Do not call
+   * this method for a distribution created with that helper.
+   *
+   * Call this method only when the distribution cannot update this bucket policy,
+   * for example when the bucket is referenced from another stack.
+   *
+   * Supported only when {@link S3SecureBucketProps.bucketType} is
+   * {@link S3SecureBucketType.CLOUDFRONT_ORIGIN_BUCKET}.
+   *
+   * @param distribution - Distribution that fetches objects from this bucket.
+   * @throws Error when `bucketType` is not {@link S3SecureBucketType.CLOUDFRONT_ORIGIN_BUCKET}.
+   */
+  public grantCloudFrontRead(distribution: cloudfront.IDistribution): void {
+    if (this.bucketType !== S3SecureBucketType.CLOUDFRONT_ORIGIN_BUCKET) {
+      throw new Error('grantCloudFrontRead is only supported when bucketType is CLOUDFRONT_ORIGIN_BUCKET');
+    }
+
+    grantCloudFrontOriginRead(this, distribution);
   }
 }

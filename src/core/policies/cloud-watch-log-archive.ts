@@ -1,6 +1,9 @@
 import * as iam from 'aws-cdk-lib/aws-iam';
 import { BucketPolicyApplyResult, BucketPolicyContext } from './types';
 
+const AWS_SOURCE_ACCOUNT = 'aws:SourceAccount';
+const AWS_SOURCE_ARN = 'aws:SourceArn';
+
 /**
  * Adds resource policies for CloudWatch Logs export tasks in the stack account and region.
  *
@@ -30,10 +33,10 @@ export const applyCloudWatchLogArchivePolicy = ({
     resources: [bucket.bucketArn],
     conditions: {
       StringEquals: {
-        'aws:SourceAccount': [account],
+        [AWS_SOURCE_ACCOUNT]: [account],
       },
       ArnLike: {
-        'aws:SourceArn': [sourceLogGroupArn],
+        [AWS_SOURCE_ARN]: [sourceLogGroupArn],
       },
     },
   }));
@@ -47,10 +50,10 @@ export const applyCloudWatchLogArchivePolicy = ({
     conditions: {
       StringEquals: {
         's3:x-amz-acl': 'bucket-owner-full-control',
-        'aws:SourceAccount': [account],
+        [AWS_SOURCE_ACCOUNT]: [account],
       },
       ArnLike: {
-        'aws:SourceArn': [sourceLogGroupArn],
+        [AWS_SOURCE_ARN]: [sourceLogGroupArn],
       },
     },
   }));
