@@ -1,12 +1,13 @@
-# S3 Secure Bucket (AWS CDK v2)
+# S3 Secure Bucket (CDK v2)
 
-[![GitHub](https://img.shields.io/github/license/gammarers-aws-cdk-resources/s3-secure-bucket?style=flat-square)](https://github.com/gammarers-aws-cdk-resources/s3-secure-bucket/blob/main/LICENSE)
 [![npm version](https://img.shields.io/npm/v/s3-secure-bucket?style=flat-square)](https://www.npmjs.com/package/s3-secure-bucket)
-[![GitHub Workflow Status (branch)](https://img.shields.io/github/actions/workflow/status/gammarers-aws-cdk-resources/s3-secure-bucket/build.yml?branch=main&label=build&style=flat-square)](https://github.com/gammarers-aws-cdk-resources/s3-secure-bucket/actions/workflows/build.yml)
-[![GitHub Workflow Status (branch)](https://img.shields.io/github/actions/workflow/status/gammarers-aws-cdk-resources/s3-secure-bucket/release.yml?branch=main&label=release&style=flat-square)](https://github.com/gammarers-aws-cdk-resources/s3-secure-bucket/actions/workflows/release.yml)
-[![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/gammarers-aws-cdk-resources/s3-secure-bucket?sort=semver&style=flat-square)](https://github.com/gammarers-aws-cdk-resources/s3-secure-bucket/releases)
+[![license](https://img.shields.io/npm/l/s3-secure-bucket?style=flat-square)](https://www.npmjs.com/package/s3-secure-bucket)
+[![Node.js](https://img.shields.io/node/v/s3-secure-bucket?style=flat-square)](https://www.npmjs.com/package/s3-secure-bucket)
+[![build](https://img.shields.io/github/actions/workflow/status/gammarers-aws-cdk-resources/s3-secure-bucket/build.yml?label=build&style=flat-square)](https://github.com/gammarers-aws-cdk-resources/s3-secure-bucket/actions/workflows/build.yml)
 
-AWS CDK v2 construct library: an [`s3.Bucket`](https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cdk-lib.aws_s3.Bucket.html) with security-focused defaults (private ACLs, block public access, TLS-only access, encryption, versioning, `BucketOwnerEnforced`, `RemovalPolicy.RETAIN`). Use `bucketType` so encryption and bucket policies match pipeline artifacts, CloudFront origins, centralized access logs, and CloudWatch Logs export archives.
+[![View on Construct Hub](https://constructs.dev/badge?package=s3-secure-bucket)](https://constructs.dev/packages/s3-secure-bucket)
+
+AWS CDK v2 construct for an Amazon S3 bucket with private access, TLS-only requests, encryption, and versioning. `bucketType` selects encryption and, where needed, a bucket policy for pipeline artifacts, CloudFront origins, access logs, or CloudWatch Logs exports.
 
 ## Features
 
@@ -15,7 +16,7 @@ AWS CDK v2 construct library: an [`s3.Bucket`](https://docs.aws.amazon.com/cdk/a
 - **Log / origin / archive types**: S3-managed encryption (`AES256`) for `ACCESS_LOG_BUCKET`, `CLOUDFRONT_ORIGIN_BUCKET`, and `CLOUD_WATCH_LOG_ARCHIVE_BUCKET`
 - Versioning on by default; object ownership `BucketOwnerEnforced` by default
 - `RemovalPolicy.RETAIN` on the bucket
-- Optional EventBridge notifications via `eventBridgeEnabled` (applied through an L1 property override when `true`)
+- Optional EventBridge notifications via `eventBridgeEnabled`
 - **`bucketType` presets**
   - **`DEFAULT_BUCKET`**: general-purpose secure bucket (KMS-managed encryption by default)
   - **`DEPLOYMENT_PIPELINE_ARTIFACT_BUCKET`**: optional `s3:*` grant for the CDK deploy role when using a **non-default** bootstrap qualifier
@@ -24,18 +25,28 @@ AWS CDK v2 construct library: an [`s3.Bucket`](https://docs.aws.amazon.com/cdk/a
   - **`CLOUD_WATCH_LOG_ARCHIVE_BUCKET`**: `s3:GetBucketAcl` and `s3:PutObject` (`bucket-owner-full-control`) for CloudWatch Logs export tasks (`logs.<region>.amazonaws.com`, same-account log groups in the stack Region)
 - **`accessLogBucketPolicyDependable`** (access-log buckets only): use with `loadBalancer.node.addDependency(...)` so ALB/NLB access-log enablement runs after the bucket policy exists (avoids validation `PutObject` failures)
 
+## How it works
+
+Creating an `S3SecureBucket` applies private access, block public access, TLS-only requests, versioning, and `RemovalPolicy.RETAIN`. `bucketType` selects the encryption default and, for some types, a bucket policy: deploy-role access for a non-default CDK bootstrap qualifier, CloudFront `s3:GetObject` when you call `grantCloudFrontRead`, log delivery for access logs, or CloudWatch Logs export. Load balancers that write access logs should depend on `accessLogBucketPolicyDependable` so the policy exists before AWS validates the log destination.
+
 ## Installation
 
-**npm**
+### npm
 
-```shell
+```bash
 npm install s3-secure-bucket
 ```
 
-**yarn**
+### yarn
 
-```shell
+```bash
 yarn add s3-secure-bucket
+```
+
+### pnpm
+
+```bash
+pnpm add s3-secure-bucket
 ```
 
 ## Usage
@@ -151,7 +162,7 @@ For cross-account export, extend the bucket policy with additional `aws:SourceAc
 
 ## Options
 
-`S3SecureBucket` accepts `S3SecureBucketProps`, which extends [`s3.BucketProps`](https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cdk-lib.aws_s3.BucketProps.html). Standard options such as `bucketName`, `versioned`, `encryption`, `lifecycleRules`, and `eventBridgeEnabled` work as usual alongside the secure defaults. When `eventBridgeEnabled` is `true`, EventBridge notification is enabled via an L1 override on the underlying `AWS::S3::Bucket`.
+`S3SecureBucket` accepts `S3SecureBucketProps`, which extends [`s3.BucketProps`](https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cdk-lib.aws_s3.BucketProps.html). Standard options such as `bucketName`, `versioned`, `encryption`, `lifecycleRules`, and `eventBridgeEnabled` work as usual alongside the secure defaults. When `eventBridgeEnabled` is `true`, EventBridge notification is enabled on the bucket.
 
 ### Construct props (`S3SecureBucketProps`)
 
@@ -177,7 +188,9 @@ For cross-account export, extend the bucket policy with additional `aws:SourceAc
 | --- | --- | --- | --- |
 | `accessLogBucketPolicyDependable` | `IDependable \| undefined` | `bucketType === ACCESS_LOG_BUCKET` | Depend on this from ALB/NLB so access-log configuration waits for the bucket policy resource. |
 
-See [API.md](./API.md) for the full API reference.
+## API
+
+See [API.md](./API.md).
 
 ## Requirements
 
