@@ -1,42 +1,14 @@
-import { awscdk, javascript, github } from 'projen';
-const project = new awscdk.AwsCdkConstructLibrary({
-  author: 'yicr',
-  authorAddress: 'yicr@users.noreply.github.com',
+import { ProjenCdkConstructLibrary } from '@gammarers/projen-projects';
+const project = new ProjenCdkConstructLibrary({
   cdkVersion: '2.232.0',
-  defaultReleaseBranch: 'main',
-  typescriptVersion: '6.0.x',
-  jsiiVersion: '6.0.x',
   name: 's3-secure-bucket',
-  packageManager: javascript.NodePackageManager.NPM,
-  projenrcTs: true,
-  repositoryUrl: 'https://github.com/gammarers-aws-cdk-resources/s3-secure-bucket.git',
+  repository: 'https://github.com/gammarers-aws-cdk-resources/s3-secure-bucket.git',
   description: 'S3 Secure Bucket is a construct that creates a secure bucket with encryption, logging, and other security features.',
+  devDeps: [
+    '@gammarers/projen-projects@^0.3.2',
+  ],
   releaseToNpm: true,
   npmTrustedPublishing: true,
-  npmAccess: javascript.NpmAccess.PUBLIC,
-  minNodeVersion: '20.0.0',
-  workflowNodeVersion: '24.x',
-  depsUpgradeOptions: {
-    workflowOptions: {
-      labels: ['auto-approve', 'auto-merge'],
-      schedule: javascript.UpgradeDependenciesSchedule.WEEKLY,
-    },
-  },
-  githubOptions: {
-    projenCredentials: github.GithubCredentials.fromApp({
-      permissions: {
-        pullRequests: github.workflows.AppPermission.WRITE,
-        contents: github.workflows.AppPermission.WRITE,
-        workflows: github.workflows.AppPermission.WRITE,
-      },
-    }),
-  },
-  autoApproveOptions: {
-    allowedUsernames: [
-      'gammarers-projen-upgrade-bot[bot]',
-      'yicr',
-    ],
-  },
   tsconfigDev: {
     compilerOptions: {
       strict: true,
