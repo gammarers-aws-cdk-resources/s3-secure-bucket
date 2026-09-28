@@ -4,7 +4,7 @@ import {
   isAwsAccountId,
   isAwsOrganizationId,
   isExclusiveAccessLogDeliveryScope,
-} from '../src/bucket-types/access-log-delivery-scope';
+} from '../src/core/access-log-delivery-scope';
 
 describe('AccessLogDeliveryScope predicates', () => {
   describe('isExclusiveAccessLogDeliveryScope', () => {

@@ -3,7 +3,7 @@ import {
   type AccessLogDeliveryScope,
   isAwsAccountId,
   isAwsOrganizationId,
-} from '../bucket-types';
+} from '../access-log-delivery-scope';
 
 /**
  * Resolved `AWSLogs` resource ARNs and optional organization condition value.

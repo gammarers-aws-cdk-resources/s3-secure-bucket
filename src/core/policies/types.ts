@@ -1,7 +1,7 @@
 import { Stack } from 'aws-cdk-lib';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import { IDependable } from 'constructs';
-import type { AccessLogDeliveryScope } from '../bucket-types';
+import type { AccessLogDeliveryScope } from '../access-log-delivery-scope';
 
 /**
  * Inputs shared by bucket-type resource policy appliers.

@@ -2,12 +2,11 @@ import { RemovalPolicy, Stack } from 'aws-cdk-lib';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import { Construct, IDependable } from 'constructs';
-import { applyBucketPolicies, grantCloudFrontOriginRead } from './bucket-policies';
-import {
-  resolveEncryptionDefault,
-  S3SecureBucketProps,
-  S3SecureBucketType,
-} from './bucket-types';
+import { S3SecureBucketType } from './core/bucket-type';
+import { resolveEncryptionDefault } from './core/encryption-default';
+import { applyBucketPolicies } from './core/policies/apply-bucket-policies';
+import { grantCloudFrontOriginRead } from './core/policies/cloudfront-origin';
+import { S3SecureBucketProps } from './core/props';
 
 /**
  * S3 bucket with opinionated secure defaults: private ACLs, block public access, TLS-only access,

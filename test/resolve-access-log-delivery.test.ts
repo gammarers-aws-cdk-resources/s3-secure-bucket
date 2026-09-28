@@ -1,5 +1,5 @@
 import { Aws, Token } from 'aws-cdk-lib';
-import { resolveAccessLogDelivery } from '../src/bucket-policies/resolve-access-log-delivery';
+import { resolveAccessLogDelivery } from '../src/core/policies/resolve-access-log-delivery';
 
 describe('resolveAccessLogDelivery', () => {
   const bucketArn = 'arn:aws:s3:::example-access-logs';
