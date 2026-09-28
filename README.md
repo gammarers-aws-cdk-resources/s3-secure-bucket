@@ -19,7 +19,7 @@ AWS CDK v2 construct library: an [`s3.Bucket`](https://docs.aws.amazon.com/cdk/a
 - **`bucketType` presets**
   - **`DEFAULT_BUCKET`**: general-purpose secure bucket (KMS-managed encryption by default)
   - **`DEPLOYMENT_PIPELINE_ARTIFACT_BUCKET`**: optional `s3:*` grant for the CDK deploy role when using a **non-default** bootstrap qualifier
-  - **`CLOUDFRONT_ORIGIN_BUCKET`**: S3-managed encryption for typical CloudFront origin use
+  - **`CLOUDFRONT_ORIGIN_BUCKET`**: S3-managed encryption for a CloudFront origin. `S3BucketOrigin.withOriginAccessControl` adds `s3:GetObject` for that distribution. Call `grantCloudFrontRead` only when the distribution cannot update the bucket policy (`cloudfront.amazonaws.com`, conditioned on the distribution ARN)
   - **`ACCESS_LOG_BUCKET`**: `s3:PutObject` for ALB/NLB (`logdelivery.elasticloadbalancing.amazonaws.com` + regional **ELBv2 account** from `aws-cdk-lib/region-info` when known), CloudFront standard logging (`delivery.logs.amazonaws.com`), and S3 server access logging (`logging.s3.amazonaws.com`). Writers default to `AWSLogs/<stack account>/*`; override with `accessLogDelivery` (`allowedSourceAccountIds` or `organizationId`)
   - **`CLOUD_WATCH_LOG_ARCHIVE_BUCKET`**: `s3:GetBucketAcl` and `s3:PutObject` (`bucket-owner-full-control`) for CloudWatch Logs export tasks (`logs.<region>.amazonaws.com`, same-account log groups in the stack Region)
 - **`accessLogBucketPolicyDependable`** (access-log buckets only): use with `loadBalancer.node.addDependency(...)` so ALB/NLB access-log enablement runs after the bucket policy exists (avoids validation `PutObject` failures)
@@ -70,18 +70,26 @@ const artifactBucket = new S3SecureBucket(stack, 'ArtifactBucket', {
 
 ### CloudFront origin bucket
 
+The bucket stays private. CloudFront reads objects through origin access control. The bucket policy allows `s3:GetObject` for `cloudfront.amazonaws.com` only when `AWS:SourceArn` is that distribution. Put the origin access control on the distribution origin. The access control ID is not part of the bucket policy.
+
+`origins.S3BucketOrigin.withOriginAccessControl` adds that statement. Do not also call `grantCloudFrontRead` for that distribution.
+
+Call `grantCloudFrontRead` only when the distribution cannot update this bucket policy, for example when the bucket is referenced from another stack. It adds the same `s3:GetObject` statement.
+
 ```typescript
 import { Stack } from 'aws-cdk-lib';
+import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import { S3SecureBucket, S3SecureBucketType } from 's3-secure-bucket';
 
 declare const stack: Stack;
+declare const distribution: cloudfront.IDistribution;
 
 const originBucket = new S3SecureBucket(stack, 'OriginBucket', {
   bucketType: S3SecureBucketType.CLOUDFRONT_ORIGIN_BUCKET,
 });
-```
 
-Wire the bucket to CloudFront (for example `origins.S3Origin`) using your usual approach. This library only configures the **bucket** defaults and encryption.
+originBucket.grantCloudFrontRead(distribution);
+```
 
 ### Centralized access log bucket (ALB / NLB / CloudFront / S3)
 
@@ -159,7 +167,7 @@ For cross-account export, extend the bucket policy with additional `aws:SourceAc
 | --- | --- |
 | `S3SecureBucketType.DEFAULT_BUCKET` | General-purpose secure bucket |
 | `S3SecureBucketType.DEPLOYMENT_PIPELINE_ARTIFACT_BUCKET` | CDK pipeline artifact bucket (custom bootstrap qualifier) |
-| `S3SecureBucketType.CLOUDFRONT_ORIGIN_BUCKET` | CloudFront origin bucket |
+| `S3SecureBucketType.CLOUDFRONT_ORIGIN_BUCKET` | CloudFront origin bucket. `grantCloudFrontRead` adds `s3:GetObject` only when the distribution cannot update the bucket policy. `S3BucketOrigin.withOriginAccessControl` adds that statement itself |
 | `S3SecureBucketType.ACCESS_LOG_BUCKET` | Centralized access logs (`AWSLogs/<account>/*` by default; widen with `accessLogDelivery`) |
 | `S3SecureBucketType.CLOUD_WATCH_LOG_ARCHIVE_BUCKET` | CloudWatch Logs export archive |
 

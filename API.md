@@ -85,6 +85,7 @@ When `eventBridgeEnabled` is `true`, EventBridge notification is enabled via an 
 | <code><a href="#s3-secure-bucket.S3SecureBucket.addInventory">addInventory</a></code> | Add an inventory configuration. |
 | <code><a href="#s3-secure-bucket.S3SecureBucket.addLifecycleRule">addLifecycleRule</a></code> | Add a lifecycle rule to the bucket. |
 | <code><a href="#s3-secure-bucket.S3SecureBucket.addMetric">addMetric</a></code> | Adds a metrics configuration for the CloudWatch request metrics from the bucket. |
+| <code><a href="#s3-secure-bucket.S3SecureBucket.grantCloudFrontRead">grantCloudFrontRead</a></code> | Allows one CloudFront distribution to read objects through origin access control. |
 
 ---
 
@@ -862,6 +863,34 @@ Adds a metrics configuration for the CloudWatch request metrics from the bucket.
 - *Type:* aws-cdk-lib.aws_s3.BucketMetrics
 
 The metric configuration to add.
+
+---
+
+##### `grantCloudFrontRead` <a name="grantCloudFrontRead" id="s3-secure-bucket.S3SecureBucket.grantCloudFrontRead"></a>
+
+```typescript
+public grantCloudFrontRead(distribution: IDistribution): void
+```
+
+Allows one CloudFront distribution to read objects through origin access control.
+
+Adds `s3:GetObject` for `cloudfront.amazonaws.com` when `AWS:SourceArn` is
+{@link cloudfront.IDistribution.distributionArn}. Call once per distribution.
+
+`S3BucketOrigin.withOriginAccessControl` adds this same statement. Do not call
+this method for a distribution created with that helper.
+
+Call this method only when the distribution cannot update this bucket policy,
+for example when the bucket is referenced from another stack.
+
+Supported only when {@link S3SecureBucketProps.bucketType} is
+{@link S3SecureBucketType.CLOUDFRONT_ORIGIN_BUCKET}.
+
+###### `distribution`<sup>Required</sup> <a name="distribution" id="s3-secure-bucket.S3SecureBucket.grantCloudFrontRead.parameter.distribution"></a>
+
+- *Type:* aws-cdk-lib.aws_cloudfront.IDistribution
+
+Distribution that fetches objects from this bucket.
 
 ---
 

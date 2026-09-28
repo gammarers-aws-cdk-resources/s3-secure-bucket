@@ -17,6 +17,9 @@ export const S3SecureBucketType = {
    * Origin bucket for CloudFront distributions.
    *
    * Uses S3-managed encryption ({@link s3.BucketEncryption.S3_MANAGED}) by default.
+   * `S3SecureBucket.grantCloudFrontRead` allows `s3:GetObject` from one distribution
+   * through origin access control when that distribution cannot update this bucket policy.
+   * `S3BucketOrigin.withOriginAccessControl` adds the same statement itself.
    */
   CLOUDFRONT_ORIGIN_BUCKET: 'CloudFrontOriginBucket',
   /**
