@@ -7,27 +7,28 @@
 
 [![View on Construct Hub](https://constructs.dev/badge?package=s3-secure-bucket)](https://constructs.dev/packages/s3-secure-bucket)
 
-AWS CDK v2 construct for an Amazon S3 bucket with private access, TLS-only requests, encryption, and versioning. `bucketType` selects encryption and, where needed, a bucket policy for pipeline artifacts, CloudFront origins, access logs, or CloudWatch Logs exports.
+AWS CDK v2 construct for an Amazon S3 bucket with private access, TLS-only requests, encryption, and versioning. `bucketType` selects encryption and, where needed, a bucket policy or ACL settings for pipeline artifacts, CloudFront origins, access logs, or CloudWatch Logs exports.
 
 ## Features
 
 - Private access, block public access, and deny insecure transport (`enforceSSL`)
 - **Default bucket**: KMS-managed encryption (`aws:kms`) unless overridden
-- **Log / origin / archive types**: S3-managed encryption (`AES256`) for `ACCESS_LOG_BUCKET`, `CLOUDFRONT_ORIGIN_BUCKET`, and `CLOUD_WATCH_LOG_ARCHIVE_BUCKET`
-- Versioning on by default; object ownership `BucketOwnerEnforced` by default
+- **Log / origin / archive types**: S3-managed encryption (`AES256`) for `ACCESS_LOG_BUCKET`, `CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET`, `CLOUDFRONT_ORIGIN_BUCKET`, and `CLOUD_WATCH_LOG_ARCHIVE_BUCKET`
+- Versioning on by default; object ownership `BucketOwnerEnforced` by default (`ObjectWriter` for CloudFront legacy access logs)
 - `RemovalPolicy.RETAIN` on the bucket
 - Optional EventBridge notifications via `eventBridgeEnabled`
 - **`bucketType` presets**
   - **`DEFAULT_BUCKET`**: general-purpose secure bucket (KMS-managed encryption by default)
   - **`DEPLOYMENT_PIPELINE_ARTIFACT_BUCKET`**: optional `s3:*` grant for the CDK deploy role when using a **non-default** bootstrap qualifier
   - **`CLOUDFRONT_ORIGIN_BUCKET`**: S3-managed encryption for a CloudFront origin. `S3BucketOrigin.withOriginAccessControl` adds `s3:GetObject` for that distribution. Call `grantCloudFrontRead` only when the distribution cannot update the bucket policy (`cloudfront.amazonaws.com`, conditioned on the distribution ARN)
-  - **`ACCESS_LOG_BUCKET`**: `s3:PutObject` for ALB/NLB (`logdelivery.elasticloadbalancing.amazonaws.com` + regional **ELBv2 account** from `aws-cdk-lib/region-info` when known), CloudFront standard logging (`delivery.logs.amazonaws.com`), and S3 server access logging (`logging.s3.amazonaws.com`). Writers default to `AWSLogs/<stack account>/*`; override with `accessLogDelivery` (`allowedSourceAccountIds` or `organizationId`)
+  - **`ACCESS_LOG_BUCKET`**: `s3:PutObject` for ALB/NLB (`logdelivery.elasticloadbalancing.amazonaws.com` + regional **ELBv2 account** from `aws-cdk-lib/region-info` when known), CloudFront standard logging **v2** (`delivery.logs.amazonaws.com`), and S3 server access logging (`logging.s3.amazonaws.com`). Writers default to `AWSLogs/<stack account>/*`; override with `accessLogDelivery` (`allowedSourceAccountIds` or `organizationId`). Not for legacy `Distribution.logBucket`
+  - **`CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET`**: S3-managed encryption, `LogDeliveryWrite` ACL, and `ObjectWriter` ownership for CloudFront standard logging (**legacy**) via `Distribution.logBucket` / `logFilePrefix`. Delivery uses ACL, not an `AWSLogs/...` bucket policy
   - **`CLOUD_WATCH_LOG_ARCHIVE_BUCKET`**: `s3:GetBucketAcl` and `s3:PutObject` (`bucket-owner-full-control`) for CloudWatch Logs export tasks (`logs.<region>.amazonaws.com`, same-account log groups in the stack Region)
 - **`accessLogBucketPolicyDependable`** (access-log buckets only): use with `loadBalancer.node.addDependency(...)` so ALB/NLB access-log enablement runs after the bucket policy exists (avoids validation `PutObject` failures)
 
 ## How it works
 
-Creating an `S3SecureBucket` applies private access, block public access, TLS-only requests, versioning, and `RemovalPolicy.RETAIN`. `bucketType` selects the encryption default and, for some types, a bucket policy: deploy-role access for a non-default CDK bootstrap qualifier, CloudFront `s3:GetObject` when you call `grantCloudFrontRead`, log delivery for access logs, or CloudWatch Logs export. Load balancers that write access logs should depend on `accessLogBucketPolicyDependable` so the policy exists before AWS validates the log destination.
+Creating an `S3SecureBucket` applies private access, block public access, TLS-only requests, versioning, and `RemovalPolicy.RETAIN`. `bucketType` selects the encryption default and, for some types, a bucket policy: deploy-role access for a non-default CDK bootstrap qualifier, CloudFront `s3:GetObject` when you call `grantCloudFrontRead`, log delivery for access logs, or CloudWatch Logs export. CloudFront legacy access-log buckets rely on ACL (`LogDeliveryWrite`) instead of those resource policies. Load balancers that write access logs should depend on `accessLogBucketPolicyDependable` so the policy exists before AWS validates the log destination.
 
 ## Installation
 
@@ -102,7 +103,9 @@ const originBucket = new S3SecureBucket(stack, 'OriginBucket', {
 originBucket.grantCloudFrontRead(distribution);
 ```
 
-### Centralized access log bucket (ALB / NLB / CloudFront / S3)
+### Centralized access log bucket (ALB / NLB / CloudFront standard logging v2 / S3)
+
+Use `ACCESS_LOG_BUCKET` for ALB/NLB access logs, CloudFront **standard logging v2**, and S3 server access logging (`AWSLogs/<account>/*`). Do **not** pass this bucket to CloudFront `Distribution.logBucket` (legacy standard logging); use `CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET` instead.
 
 For `ACCESS_LOG_BUCKET`, the stack **`env.region` must be a concrete region** at synthesis time (not a token) so the regional ELBv2 log-delivery account ID can be resolved when the region is known.
 
@@ -143,6 +146,29 @@ Organization scope uses resource `AWSLogs/*` and `aws:SourceOrgID` on the log-de
 
 Wire logging on the load balancer using your normal approach (for example L1 attributes or another construct). This library only configures the **bucket** and its **resource policy**.
 
+### CloudFront standard logging (legacy) bucket
+
+Pass the bucket to `cloudfront.Distribution` as `logBucket`, and set `logFilePrefix` to your own prefix (for example `hostname/original-log/`). Keys are **not** under `AWSLogs/<account>/*`. Delivery uses the `LogDeliveryWrite` ACL; this type does not add the `ACCESS_LOG_BUCKET` resource policy.
+
+```typescript
+import { Stack } from 'aws-cdk-lib';
+import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
+import { S3SecureBucket, S3SecureBucketType } from 's3-secure-bucket';
+
+declare const stack: Stack;
+declare const origin: cloudfront.IOrigin;
+
+const cloudFrontLegacyLogBucket = new S3SecureBucket(stack, 'CloudFrontLegacyLogBucket', {
+  bucketType: S3SecureBucketType.CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET,
+});
+
+new cloudfront.Distribution(stack, 'Distribution', {
+  defaultBehavior: { origin },
+  logBucket: cloudFrontLegacyLogBucket,
+  logFilePrefix: 'hostname/original-log/',
+});
+```
+
 ### CloudWatch Logs export archive bucket
 
 Store log data exported from CloudWatch Logs via [export tasks](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/S3Export.html). The bucket must be in the **same Region** as the log groups you export. Create export tasks with your usual workflow (console, CLI, or API); this library configures the **bucket** and **resource policy** for same-account exports.
@@ -168,7 +194,7 @@ For cross-account export, extend the bucket policy with additional `aws:SourceAc
 
 | Property | Type | Default | Description |
 | --- | --- | --- | --- |
-| `bucketType` | `S3SecureBucketType` | `DEFAULT_BUCKET` | Selects encryption defaults and optional resource-policy statements. |
+| `bucketType` | `S3SecureBucketType` | `DEFAULT_BUCKET` | Selects encryption defaults and optional resource-policy or ACL settings. |
 | `accessLogDelivery` | `AccessLogDeliveryScope` | stack account only | `ACCESS_LOG_BUCKET` only. Exactly one of `allowedSourceAccountIds` or `organizationId`. |
 | *(inherited)* | `s3.BucketProps` | — | All other `Bucket` properties are passed through (some receive overrides inside the construct). |
 
@@ -179,7 +205,8 @@ For cross-account export, extend the bucket policy with additional `aws:SourceAc
 | `S3SecureBucketType.DEFAULT_BUCKET` | General-purpose secure bucket |
 | `S3SecureBucketType.DEPLOYMENT_PIPELINE_ARTIFACT_BUCKET` | CDK pipeline artifact bucket (custom bootstrap qualifier) |
 | `S3SecureBucketType.CLOUDFRONT_ORIGIN_BUCKET` | CloudFront origin bucket. `grantCloudFrontRead` adds `s3:GetObject` only when the distribution cannot update the bucket policy. `S3BucketOrigin.withOriginAccessControl` adds that statement itself |
-| `S3SecureBucketType.ACCESS_LOG_BUCKET` | Centralized access logs (`AWSLogs/<account>/*` by default; widen with `accessLogDelivery`) |
+| `S3SecureBucketType.ACCESS_LOG_BUCKET` | Centralized access logs for ALB/NLB, CloudFront standard logging v2, and S3 server access logging (`AWSLogs/<account>/*` by default; widen with `accessLogDelivery`). Not for legacy `Distribution.logBucket` |
+| `S3SecureBucketType.CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET` | CloudFront standard logging (legacy) destination for `Distribution.logBucket` / `logFilePrefix` (`LogDeliveryWrite` ACL, `ObjectWriter`) |
 | `S3SecureBucketType.CLOUD_WATCH_LOG_ARCHIVE_BUCKET` | CloudWatch Logs export archive |
 
 ### Read-only: `accessLogBucketPolicyDependable`

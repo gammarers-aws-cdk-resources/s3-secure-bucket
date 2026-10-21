@@ -1,6 +1,6 @@
 {
   "name": "s3-secure-bucket",
-  "description": "S3 Secure Bucket is a construct that creates a secure bucket with encryption, logging, and other security features.",
+  "description": "AWS CDK construct for a secure Amazon S3 bucket with private access, encryption, versioning, and bucketType presets for logs and origins.",
   "repository": {
     "type": "git",
     "url": "https://github.com/gammarers-aws-cdk-resources/s3-secure-bucket.git"
@@ -36,7 +36,7 @@
     "organization": false
   },
   "devDependencies": {
-    "@gammarers/projen-projects": "^0.3.2",
+    "@gammarers/projen-projects": "^0.5.10",
     "@stylistic/eslint-plugin": "^2",
     "@types/jest": "^30.0.0",
     "@types/node": "^20",

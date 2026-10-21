@@ -1,4 +1,4 @@
-import { App, Stack } from 'aws-cdk-lib';
+import { App, Aws, Stack, Token } from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import { RegionInfo } from 'aws-cdk-lib/region-info';
@@ -184,7 +184,8 @@ describe('S3SecureBucket bucketType=ACCESS_LOG_BUCKET accessLogDelivery', () => 
     new S3SecureBucket(stack, 'AccessLogBucket', {
       bucketType: S3SecureBucketType.ACCESS_LOG_BUCKET,
       accessLogDelivery: {
-        allowedSourceAccountIds: ['111111111111', '222222222222'],
+        // Duplicates are ignored; stack account is not added unless listed.
+        allowedSourceAccountIds: ['111111111111', '222222222222', '111111111111'],
       },
     });
     const template = Template.fromStack(stack);
@@ -324,9 +325,35 @@ describe('S3SecureBucket bucketType=ACCESS_LOG_BUCKET accessLogDelivery', () => 
     })).toThrow('accessLogDelivery is only supported when bucketType is ACCESS_LOG_BUCKET');
   });
 
-  it('throws when both exclusive accessLogDelivery fields are set', () => {
+  it.each([
+    {
+      name: 'neither field',
+      accessLogDelivery: {},
+    },
+    {
+      name: 'both fields',
+      accessLogDelivery: {
+        allowedSourceAccountIds: ['111111111111'],
+        organizationId: 'o-abcdefghijklmnopqrst',
+      },
+    },
+  ])('throws when accessLogDelivery specifies $name', ({ accessLogDelivery }) => {
     const app = new App();
-    const stack = new Stack(app, 'BothFieldsStack', {
+    const stack = new Stack(app, 'ExclusiveFieldsStack', {
+      env: {
+        account: '123456789012',
+        region: 'us-east-1',
+      },
+    });
+    expect(() => new S3SecureBucket(stack, 'AccessLogBucket', {
+      bucketType: S3SecureBucketType.ACCESS_LOG_BUCKET,
+      accessLogDelivery,
+    })).toThrow('accessLogDelivery must specify exactly one of allowedSourceAccountIds or organizationId');
+  });
+
+  it('throws when allowedSourceAccountIds is empty', () => {
+    const app = new App();
+    const stack = new Stack(app, 'EmptyAccountListStack', {
       env: {
         account: '123456789012',
         region: 'us-east-1',
@@ -335,10 +362,73 @@ describe('S3SecureBucket bucketType=ACCESS_LOG_BUCKET accessLogDelivery', () => 
     expect(() => new S3SecureBucket(stack, 'AccessLogBucket', {
       bucketType: S3SecureBucketType.ACCESS_LOG_BUCKET,
       accessLogDelivery: {
-        allowedSourceAccountIds: ['111111111111'],
-        organizationId: 'o-abcdefghijklmnopqrst',
+        allowedSourceAccountIds: [],
       },
-    })).toThrow('accessLogDelivery must specify exactly one of allowedSourceAccountIds or organizationId');
+    })).toThrow('allowedSourceAccountIds must contain at least one account ID');
+  });
+
+  it('throws when an account ID is invalid', () => {
+    const app = new App();
+    const stack = new Stack(app, 'InvalidAccountStack', {
+      env: {
+        account: '123456789012',
+        region: 'us-east-1',
+      },
+    });
+    expect(() => new S3SecureBucket(stack, 'AccessLogBucket', {
+      bucketType: S3SecureBucketType.ACCESS_LOG_BUCKET,
+      accessLogDelivery: {
+        allowedSourceAccountIds: ['not-an-account'],
+      },
+    })).toThrow('allowedSourceAccountIds contains an invalid AWS account ID: not-an-account');
+  });
+
+  it('throws when organizationId is invalid', () => {
+    const app = new App();
+    const stack = new Stack(app, 'InvalidOrgStack', {
+      env: {
+        account: '123456789012',
+        region: 'us-east-1',
+      },
+    });
+    expect(() => new S3SecureBucket(stack, 'AccessLogBucket', {
+      bucketType: S3SecureBucketType.ACCESS_LOG_BUCKET,
+      accessLogDelivery: {
+        organizationId: 'not-an-org',
+      },
+    })).toThrow('organizationId must be an AWS Organizations ID (o-...), got: not-an-org');
+  });
+
+  it('skips account ID format checks for unresolved tokens', () => {
+    const app = new App();
+    const stack = new Stack(app, 'TokenAccountStack', {
+      env: {
+        account: '123456789012',
+        region: 'us-east-1',
+      },
+    });
+    expect(() => new S3SecureBucket(stack, 'AccessLogBucket', {
+      bucketType: S3SecureBucketType.ACCESS_LOG_BUCKET,
+      accessLogDelivery: {
+        allowedSourceAccountIds: [Aws.ACCOUNT_ID],
+      },
+    })).not.toThrow();
+  });
+
+  it('skips organization ID format checks for unresolved tokens', () => {
+    const app = new App();
+    const stack = new Stack(app, 'TokenOrgStack', {
+      env: {
+        account: '123456789012',
+        region: 'us-east-1',
+      },
+    });
+    expect(() => new S3SecureBucket(stack, 'AccessLogBucket', {
+      bucketType: S3SecureBucketType.ACCESS_LOG_BUCKET,
+      accessLogDelivery: {
+        organizationId: Token.asString({ Ref: 'OrganizationId' }),
+      },
+    })).not.toThrow();
   });
 });
 
