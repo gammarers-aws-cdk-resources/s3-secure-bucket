@@ -44,7 +44,7 @@ export interface AccessLogDeliveryScope {
 /**
  * Bucket type discriminator values for {@link S3SecureBucketProps.bucketType}.
  *
- * Each value selects encryption defaults and, for some types, additional bucket resource policies.
+ * Each value selects encryption defaults and, for some types, additional bucket resource policies or ACL settings.
  *
  * @see {@link S3SecureBucketProps.bucketType}
  */
@@ -122,7 +122,7 @@ export type S3SecureBucketType = typeof S3SecureBucketType[keyof typeof S3Secure
  */
 export interface S3SecureBucketProps extends s3.BucketProps {
   /**
-   * Selects encryption defaults and optional resource-policy statements.
+   * Selects encryption defaults and optional resource-policy or ACL settings.
    *
    * @default {@link S3SecureBucketType.DEFAULT_BUCKET}
    */
@@ -281,6 +281,9 @@ const resolveAccessLogDelivery = (
   throw new Error(ACCESS_LOG_DELIVERY_EXCLUSIVE_ERROR);
 };
 
+/**
+ * Grants the CDK deploy role full S3 access when a non-default bootstrap qualifier is in use.
+ */
 const applyDeploymentPipelineArtifactPolicy = (
   bucket: s3.Bucket,
   stack: Stack,
@@ -303,6 +306,9 @@ const applyDeploymentPipelineArtifactPolicy = (
   }));
 };
 
+/**
+ * Adds `s3:PutObject` for ALB/NLB, CloudFront standard logging (v2), and S3 server access logging.
+ */
 const applyAccessLogBucketPolicy = (
   bucket: s3.Bucket,
   stack: Stack,
@@ -387,6 +393,9 @@ const applyAccessLogBucketPolicy = (
   };
 };
 
+/**
+ * Adds CloudWatch Logs export-task principals for the stack account and region.
+ */
 const applyCloudWatchLogArchivePolicy = (bucket: s3.Bucket, stack: Stack): void => {
   const { account, region } = stack;
   const logsExportPrincipal = new iam.ServicePrincipal(`logs.${region}.amazonaws.com`);
