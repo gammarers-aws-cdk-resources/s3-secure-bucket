@@ -13,7 +13,8 @@ import { BucketPolicyApplyResult, BucketPolicyContext } from './types';
  * Applies resource policies for the given bucket type, if any.
  *
  * Types without a policy at construction ({@link S3SecureBucketType.DEFAULT_BUCKET},
- * {@link S3SecureBucketType.CLOUDFRONT_ORIGIN_BUCKET}) return an empty result.
+ * {@link S3SecureBucketType.CLOUDFRONT_ORIGIN_BUCKET},
+ * {@link S3SecureBucketType.CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET}) return an empty result.
  * CloudFront read access is added later with `S3SecureBucket.grantCloudFrontRead`
  * only when the distribution cannot update the bucket policy.
  *

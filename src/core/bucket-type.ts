@@ -23,6 +23,20 @@ export const S3SecureBucketType = {
    */
   CLOUDFRONT_ORIGIN_BUCKET: 'CloudFrontOriginBucket',
   /**
+   * Destination for CloudFront standard logging (legacy) via
+   * {@link cloudfront.Distribution} `logBucket` and `logFilePrefix`.
+   *
+   * Uses S3-managed encryption ({@link s3.BucketEncryption.S3_MANAGED}).
+   * Sets `accessControl` to {@link s3.BucketAccessControl.LOG_DELIVERY_WRITE} and
+   * `objectOwnership` to {@link s3.ObjectOwnership.OBJECT_WRITER} so ACL-based
+   * log delivery works. Does not attach `ACCESS_LOG_BUCKET` resource policies;
+   * object keys follow the caller-supplied prefix (for example `hostname/original-log/`),
+   * not `AWSLogs/<account>/*`.
+   *
+   * Do not use {@link S3SecureBucketType.ACCESS_LOG_BUCKET} for `Distribution.logBucket`.
+   */
+  CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET: 'CloudFrontLegacyAccessLogBucket',
+  /**
    * General-purpose secure bucket (default qualifier / standard use).
    *
    * Uses KMS-managed encryption unless overridden in props. No type-specific resource policies.
@@ -38,6 +52,9 @@ export const S3SecureBucketType = {
    * The regional ELBv2 log-delivery account ID (legacy path alongside the log delivery service principal)
    * is resolved from `aws-cdk-lib/region-info` at synthesis time when {@link Stack#region} is known,
    * or via a deploy-time mapping when it is a token.
+   *
+   * Not for CloudFront standard logging (legacy) `Distribution.logBucket`; use
+   * {@link S3SecureBucketType.CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET} instead.
    */
   ACCESS_LOG_BUCKET: 'AccessLogBucket',
   /**

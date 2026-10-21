@@ -3,6 +3,7 @@ import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import { Construct, IDependable } from 'constructs';
 import { S3SecureBucketType } from './core/bucket-type';
+import { resolveCloudFrontLegacyAccessLogAcl } from './core/cloudfront-legacy-access-log-defaults';
 import { resolveEncryptionDefault } from './core/encryption-default';
 import { applyBucketPolicies } from './core/policies/apply-bucket-policies';
 import { grantCloudFrontOriginRead } from './core/policies/cloudfront-origin';
@@ -20,12 +21,16 @@ import { S3SecureBucketProps } from './core/props';
  * - `enforceSSL`: `true`
  * - `versioned`: `true` unless explicitly set in `props`
  * - `objectOwnership`: {@link s3.ObjectOwnership.BUCKET_OWNER_ENFORCED} unless overridden
+ *   ({@link S3SecureBucketType.CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET} forces {@link s3.ObjectOwnership.OBJECT_WRITER})
  * - `accessControl`: {@link s3.BucketAccessControl.PRIVATE} unless overridden
+ *   ({@link S3SecureBucketType.CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET} forces {@link s3.BucketAccessControl.LOG_DELIVERY_WRITE})
  *
  * Bucket-type-specific behavior:
  * - {@link S3SecureBucketType.DEPLOYMENT_PIPELINE_ARTIFACT_BUCKET}: may attach a deploy-role policy when a non-default bootstrap qualifier is present.
  * - {@link S3SecureBucketType.ACCESS_LOG_BUCKET}: adds log-writer principals; see {@link S3SecureBucket#accessLogBucketPolicyDependable}
  *   and {@link S3SecureBucketProps.accessLogDelivery}.
+ * - {@link S3SecureBucketType.CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET}: S3-managed encryption; ACL-based
+ *   CloudFront standard logging (legacy) via `logBucket` / `logFilePrefix`. No access-log resource policy.
  * - {@link S3SecureBucketType.CLOUD_WATCH_LOG_ARCHIVE_BUCKET}: adds CloudWatch Logs export principals (`logs.<region>.amazonaws.com`).
  * - {@link S3SecureBucketType.CLOUDFRONT_ORIGIN_BUCKET}: S3-managed encryption.
  *   {@link S3SecureBucket#grantCloudFrontRead} allows `s3:GetObject` when the distribution cannot update this bucket policy.
@@ -58,17 +63,27 @@ export class S3SecureBucket extends s3.Bucket {
    */
   constructor(scope: Construct, id: string, props?: S3SecureBucketProps) {
     const bucketType = props?.bucketType || S3SecureBucketType.DEFAULT_BUCKET;
+    const isCloudFrontLegacyAccessLog =
+      bucketType === S3SecureBucketType.CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET;
+    const legacyAcl = isCloudFrontLegacyAccessLog
+      ? resolveCloudFrontLegacyAccessLogAcl(props?.accessControl, props?.objectOwnership)
+      : undefined;
+
     super(scope, id, {
       ...props,
       removalPolicy: RemovalPolicy.RETAIN,
       encryption: resolveEncryptionDefault(bucketType, props?.encryption),
-      accessControl: props?.accessControl ?? s3.BucketAccessControl.PRIVATE,
+      accessControl: legacyAcl?.accessControl
+        ?? props?.accessControl
+        ?? s3.BucketAccessControl.PRIVATE,
       eventBridgeEnabled: undefined,
       publicReadAccess: false,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       enforceSSL: true,
       versioned: props?.versioned !== undefined ? props.versioned : true,
-      objectOwnership: props?.objectOwnership ?? s3.ObjectOwnership.BUCKET_OWNER_ENFORCED,
+      objectOwnership: legacyAcl?.objectOwnership
+        ?? props?.objectOwnership
+        ?? s3.ObjectOwnership.BUCKET_OWNER_ENFORCED,
     });
 
     const cfnBucket = this.node.defaultChild as s3.CfnBucket;
