@@ -1383,10 +1383,10 @@ Uniquely identifies this class.
 
 ### AccessLogDeliveryScope <a name="AccessLogDeliveryScope" id="s3-secure-bucket.AccessLogDeliveryScope"></a>
 
-Account scope for {@link S3SecureBucketType.ACCESS_LOG_BUCKET } resource policies.
+Account scope for {@link S3SecureBucketType.ACCESS_LOG_BUCKET} resource policies.
 
 Specify **exactly one** of {@link AccessLogDeliveryScope.allowedSourceAccountIds} or
-{@link AccessLogDeliveryScope.organizationId}. Omit {@link S3SecureBucketProps.accessLogDelivery }
+{@link AccessLogDeliveryScope.organizationId}. Omit {@link S3SecureBucketProps.accessLogDelivery}
 to allow only the stack account (default).
 
 jsii does not support a discriminated union of structs, so exclusivity is enforced at construct time.
@@ -1442,10 +1442,10 @@ with resource `AWSLogs/*`. Mutually exclusive with {@link AccessLogDeliveryScope
 
 ### S3SecureBucketProps <a name="S3SecureBucketProps" id="s3-secure-bucket.S3SecureBucketProps"></a>
 
-Construction properties for {@link S3SecureBucket }.
+Construction properties for {@link S3SecureBucket}.
 
 Extends {@link s3.BucketProps}. Several fields receive secure defaults inside the construct
-and may be overridden unless documented otherwise on {@link S3SecureBucket }.
+and may be overridden unless documented otherwise on {@link S3SecureBucket}.
 
 #### Initializer <a name="Initializer" id="s3-secure-bucket.S3SecureBucketProps.Initializer"></a>
 
@@ -1494,7 +1494,7 @@ const s3SecureBucketProps: S3SecureBucketProps = { ... }
 | <code><a href="#s3-secure-bucket.S3SecureBucketProps.property.websiteRedirect">websiteRedirect</a></code> | <code>aws-cdk-lib.aws_s3.RedirectTarget</code> | Specifies the redirect behavior of all requests to a website endpoint of a bucket. |
 | <code><a href="#s3-secure-bucket.S3SecureBucketProps.property.websiteRoutingRules">websiteRoutingRules</a></code> | <code>aws-cdk-lib.aws_s3.RoutingRule[]</code> | Rules that define when a redirect is applied and the redirect behavior. |
 | <code><a href="#s3-secure-bucket.S3SecureBucketProps.property.accessLogDelivery">accessLogDelivery</a></code> | <code><a href="#s3-secure-bucket.AccessLogDeliveryScope">AccessLogDeliveryScope</a></code> | Account or organization scope for {@link S3SecureBucketType.ACCESS_LOG_BUCKET} writers. |
-| <code><a href="#s3-secure-bucket.S3SecureBucketProps.property.bucketType">bucketType</a></code> | <code>string</code> | Selects encryption defaults and optional resource-policy statements. |
+| <code><a href="#s3-secure-bucket.S3SecureBucketProps.property.bucketType">bucketType</a></code> | <code>string</code> | Selects encryption defaults and optional resource-policy or ACL settings. |
 
 ---
 
@@ -2037,7 +2037,7 @@ public readonly bucketType: string;
 - *Type:* string
 - *Default:* {@link S3SecureBucketType.DEFAULT_BUCKET }
 
-Selects encryption defaults and optional resource-policy statements.
+Selects encryption defaults and optional resource-policy or ACL settings.
 
 ---
 
