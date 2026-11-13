@@ -877,7 +877,9 @@ Appends CloudFront origin statements to a bucket policy created outside this buc
 
 Adds three statements to `policy.document`: deny when `aws:SecureTransport` is false, deny when
 `s3:TlsVersion` is below 1.2, and allow `s3:GetObject` for `cloudfront.amazonaws.com` when
-`AWS:SourceArn` is `distributionArn`. Does not call `addToResourcePolicy`.
+`AWS:SourceArn` is `distributionArn`. When {@link S3SecureBucketProps.denyUnencryptedObjectUploads}
+is set, also denies `s3:PutObject` that omits `x-amz-server-side-encryption` or names another algorithm.
+Does not call `addToResourcePolicy`.
 
 Supported only when {@link S3SecureBucketProps.bucketType} is
 {@link S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET}.
@@ -1531,6 +1533,7 @@ const s3SecureBucketProps: S3SecureBucketProps = { ... }
 | <code><a href="#s3-secure-bucket.S3SecureBucketProps.property.websiteRoutingRules">websiteRoutingRules</a></code> | <code>aws-cdk-lib.aws_s3.RoutingRule[]</code> | Rules that define when a redirect is applied and the redirect behavior. |
 | <code><a href="#s3-secure-bucket.S3SecureBucketProps.property.accessLogDelivery">accessLogDelivery</a></code> | <code><a href="#s3-secure-bucket.AccessLogDeliveryScope">AccessLogDeliveryScope</a></code> | Account or organization scope for {@link S3SecureBucketType.ACCESS_LOG_BUCKET} writers. |
 | <code><a href="#s3-secure-bucket.S3SecureBucketProps.property.bucketType">bucketType</a></code> | <code>string</code> | Selects encryption defaults and optional resource-policy or ACL settings. |
+| <code><a href="#s3-secure-bucket.S3SecureBucketProps.property.denyUnencryptedObjectUploads">denyUnencryptedObjectUploads</a></code> | <code>boolean</code> | Denies `s3:PutObject` unless the request sends `x-amz-server-side-encryption` for this bucket's algorithm (`AES256`, `aws:kms`, or `aws:kms:dsse`). |
 
 ---
 
@@ -2074,6 +2077,30 @@ public readonly bucketType: string;
 - *Default:* {@link S3SecureBucketType.DEFAULT_BUCKET }
 
 Selects encryption defaults and optional resource-policy or ACL settings.
+
+---
+
+##### `denyUnencryptedObjectUploads`<sup>Optional</sup> <a name="denyUnencryptedObjectUploads" id="s3-secure-bucket.S3SecureBucketProps.property.denyUnencryptedObjectUploads"></a>
+
+```typescript
+public readonly denyUnencryptedObjectUploads: boolean;
+```
+
+- *Type:* boolean
+- *Default:* false
+
+Denies `s3:PutObject` unless the request sends `x-amz-server-side-encryption` for this bucket's algorithm (`AES256`, `aws:kms`, or `aws:kms:dsse`).
+
+Adds a `StringNotEquals` deny for the wrong algorithm and a `Null` deny when the header is absent.
+Uploaders that omit the header and rely on bucket default encryption are denied. Leave this off for
+ALB/NLB access logs, CloudFront log delivery, S3 server access logging, and CloudWatch Logs export.
+
+Not supported for {@link S3SecureBucketType.ACCESS_LOG_BUCKET},
+{@link S3SecureBucketType.CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET}, or
+{@link S3SecureBucketType.CLOUD_WATCH_LOG_ARCHIVE_BUCKET}.
+
+For {@link S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET}, {@link S3SecureBucket#addOriginPolicy }
+appends these statements to the caller-supplied policy. The prop does not create a bucket policy in the bucket's stack.
 
 ---
 

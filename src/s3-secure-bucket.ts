@@ -151,12 +151,35 @@ export interface S3SecureBucketProps extends s3.BucketProps {
    * @default stack account only
    */
   readonly accessLogDelivery?: AccessLogDeliveryScope;
+
+  /**
+   * Denies `s3:PutObject` unless the request sends `x-amz-server-side-encryption` for this bucket's algorithm
+   * (`AES256`, `aws:kms`, or `aws:kms:dsse`).
+   *
+   * Adds a `StringNotEquals` deny for the wrong algorithm and a `Null` deny when the header is absent.
+   * Uploaders that omit the header and rely on bucket default encryption are denied. Leave this off for
+   * ALB/NLB access logs, CloudFront log delivery, S3 server access logging, and CloudWatch Logs export.
+   *
+   * Not supported for {@link S3SecureBucketType.ACCESS_LOG_BUCKET},
+   * {@link S3SecureBucketType.CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET}, or
+   * {@link S3SecureBucketType.CLOUD_WATCH_LOG_ARCHIVE_BUCKET}.
+   *
+   * For {@link S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET}, {@link S3SecureBucket#addOriginPolicy}
+   * appends these statements to the caller-supplied policy. The prop does not create a bucket policy in the bucket's stack.
+   *
+   * @default false
+   */
+  readonly denyUnencryptedObjectUploads?: boolean;
 }
 
 const CLOUDFRONT_SERVICE_PRINCIPAL = 'cloudfront.amazonaws.com';
 const MINIMUM_TLS_VERSION = 1.2;
 const ELB_SOURCE_ARN = 'arn:aws:elasticloadbalancing:*:*:loadbalancer/*';
 const S3_PUT_OBJECT = 's3:PutObject';
+const SSE_HEADER = 's3:x-amz-server-side-encryption';
+const SSE_S3 = 'AES256';
+const SSE_KMS = 'aws:kms';
+const SSE_DSSE = 'aws:kms:dsse';
 const AWS_SOURCE_ORG_ID = 'aws:SourceOrgID';
 const AWS_SOURCE_ACCOUNT = 'aws:SourceAccount';
 const AWS_SOURCE_ARN = 'aws:SourceArn';
@@ -181,6 +204,8 @@ const ADD_ORIGIN_POLICY_BUCKET_TYPE_ERROR =
 const ADD_ORIGIN_POLICY_BUCKET_MISMATCH_ERROR =
   'addOriginPolicy requires a BucketPolicy for this bucket';
 const ADD_ORIGIN_POLICY_EMPTY_ARN_ERROR = 'distributionArn must not be empty';
+const DENY_UNENCRYPTED_OBJECT_UPLOADS_UNSUPPORTED_ERROR =
+  'denyUnencryptedObjectUploads is not supported when bucketType is ACCESS_LOG_BUCKET, CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET, or CLOUD_WATCH_LOG_ARCHIVE_BUCKET';
 const ACCESS_LOG_DELIVERY_EXCLUSIVE_ERROR =
   'accessLogDelivery must specify exactly one of allowedSourceAccountIds or organizationId';
 
@@ -227,6 +252,87 @@ const resolveEncryptionDefault = (
     return s3.BucketEncryption.S3_MANAGED;
   }
   return propsEncryption ?? s3.BucketEncryption.KMS_MANAGED;
+};
+
+/**
+ * Header value PutObject must send when explicit encryption is required.
+ * S3-managed and the deprecated unencrypted setting both use SSE-S3.
+ */
+const resolveRequiredSseHeader = (encryption: s3.BucketEncryption): string => {
+  if (encryption === s3.BucketEncryption.KMS || encryption === s3.BucketEncryption.KMS_MANAGED) {
+    return SSE_KMS;
+  }
+  if (encryption === s3.BucketEncryption.DSSE || encryption === s3.BucketEncryption.DSSE_MANAGED) {
+    return SSE_DSSE;
+  }
+  return SSE_S3;
+};
+
+/**
+ * Service log writers omit the encryption header and use the bucket default.
+ * Requiring the header makes those bucket types unable to receive logs.
+ */
+const isServiceLogBucket = (bucketType: S3SecureBucketType): boolean => {
+  if (bucketType === S3SecureBucketType.ACCESS_LOG_BUCKET) {
+    return true;
+  }
+  if (bucketType === S3SecureBucketType.CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET) {
+    return true;
+  }
+  if (bucketType === S3SecureBucketType.CLOUD_WATCH_LOG_ARCHIVE_BUCKET) {
+    return true;
+  }
+  return false;
+};
+
+/**
+ * Denies object uploads that omit server-side encryption or name a different algorithm.
+ */
+const unencryptedObjectUploadDenies = (
+  bucket: s3.Bucket,
+  sseHeader: string,
+): iam.PolicyStatement[] => {
+  return [
+    new iam.PolicyStatement({
+      sid: 'DenyIncorrectEncryptionHeader',
+      effect: iam.Effect.DENY,
+      principals: [new iam.AnyPrincipal()],
+      actions: [S3_PUT_OBJECT],
+      resources: [bucket.arnForObjects('*')],
+      conditions: {
+        StringNotEquals: {
+          [SSE_HEADER]: sseHeader,
+        },
+      },
+    }),
+    new iam.PolicyStatement({
+      sid: 'DenyUnencryptedObjectUploads',
+      effect: iam.Effect.DENY,
+      principals: [new iam.AnyPrincipal()],
+      actions: [S3_PUT_OBJECT],
+      resources: [bucket.arnForObjects('*')],
+      conditions: {
+        Null: {
+          [SSE_HEADER]: 'true',
+        },
+      },
+    }),
+  ];
+};
+
+const addUnencryptedObjectUploadDenies = (
+  bucket: s3.Bucket,
+  sseHeader: string,
+  policy?: s3.BucketPolicy,
+): void => {
+  const statements = unencryptedObjectUploadDenies(bucket, sseHeader);
+  if (policy !== undefined) {
+    policy.document.addStatements(...statements);
+    return;
+  }
+  for (const statement of statements) {
+    bucket.addToResourcePolicy(statement);
+  }
 };
 
 /**
@@ -637,12 +743,21 @@ const grantCloudFrontOriginRead = (
  * - {@link S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET}: S3-managed encryption.
  *   Does not create a bucket policy. {@link S3SecureBucket#addOriginPolicy} appends TLS and CloudFront
  *   `s3:GetObject` statements to a {@link s3.BucketPolicy} supplied by the caller.
+ *
+ * Set {@link S3SecureBucketProps.denyUnencryptedObjectUploads} to require `x-amz-server-side-encryption` on `s3:PutObject`.
+ * Service log bucket types reject that prop.
  */
 export class S3SecureBucket extends s3.Bucket {
   /**
    * Preset selected at construction. Later grants use it to reject the wrong bucket type.
    */
   private readonly bucketType: S3SecureBucketType;
+
+  /**
+   * Set when {@link S3SecureBucketProps.denyUnencryptedObjectUploads} is true.
+   * The external-policy bucket appends the denies from {@link S3SecureBucket#addOriginPolicy}.
+   */
+  private readonly requiredObjectEncryptionHeader?: string;
 
   /**
    * Set only when {@link S3SecureBucketProps.bucketType} is {@link S3SecureBucketType.ACCESS_LOG_BUCKET}.
@@ -665,6 +780,9 @@ export class S3SecureBucket extends s3.Bucket {
    */
   constructor(scope: Construct, id: string, props?: S3SecureBucketProps) {
     const bucketType = props?.bucketType || S3SecureBucketType.DEFAULT_BUCKET;
+    if (props?.denyUnencryptedObjectUploads === true && isServiceLogBucket(bucketType)) {
+      throw new Error(DENY_UNENCRYPTED_OBJECT_UPLOADS_UNSUPPORTED_ERROR);
+    }
     const isCloudFrontLegacyAccessLog =
       bucketType === S3SecureBucketType.CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET;
     const legacyAcl = isCloudFrontLegacyAccessLog
@@ -672,6 +790,11 @@ export class S3SecureBucket extends s3.Bucket {
       : undefined;
     const externalPolicyOrigin = bucketType === S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET
       ? resolveCloudFrontOriginExternalPolicy(props)
+      : undefined;
+    const objectEncryptionHeader = props?.denyUnencryptedObjectUploads === true
+      ? resolveRequiredSseHeader(
+        externalPolicyOrigin?.encryption ?? resolveEncryptionDefault(bucketType, props?.encryption),
+      )
       : undefined;
 
     super(scope, id, {
@@ -702,6 +825,7 @@ export class S3SecureBucket extends s3.Bucket {
     }
 
     this.bucketType = bucketType;
+    this.requiredObjectEncryptionHeader = objectEncryptionHeader;
 
     const stack = Stack.of(this);
     if (props?.accessLogDelivery !== undefined && bucketType !== S3SecureBucketType.ACCESS_LOG_BUCKET) {
@@ -714,6 +838,10 @@ export class S3SecureBucket extends s3.Bucket {
       props?.accessLogDelivery,
     );
     this.accessLogBucketPolicyDependable = policyResult.accessLogBucketPolicyDependable;
+    // The external-policy type appends these denies in addOriginPolicy so this stack stays free of a bucket policy.
+    if (objectEncryptionHeader !== undefined && externalPolicyOrigin === undefined) {
+      addUnencryptedObjectUploadDenies(this, objectEncryptionHeader);
+    }
   }
 
   /**
@@ -747,7 +875,9 @@ export class S3SecureBucket extends s3.Bucket {
    *
    * Adds three statements to `policy.document`: deny when `aws:SecureTransport` is false, deny when
    * `s3:TlsVersion` is below 1.2, and allow `s3:GetObject` for `cloudfront.amazonaws.com` when
-   * `AWS:SourceArn` is `distributionArn`. Does not call `addToResourcePolicy`.
+   * `AWS:SourceArn` is `distributionArn`. When {@link S3SecureBucketProps.denyUnencryptedObjectUploads}
+   * is set, also denies `s3:PutObject` that omits `x-amz-server-side-encryption` or names another algorithm.
+   * Does not call `addToResourcePolicy`.
    *
    * Supported only when {@link S3SecureBucketProps.bucketType} is
    * {@link S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET}.
@@ -770,5 +900,8 @@ export class S3SecureBucket extends s3.Bucket {
     }
 
     addCloudFrontOriginExternalStatements(this, policy, distributionArn);
+    if (this.requiredObjectEncryptionHeader !== undefined) {
+      addUnencryptedObjectUploadDenies(this, this.requiredObjectEncryptionHeader, policy);
+    }
   }
 }
