@@ -78,7 +78,7 @@ describe('S3SecureBucket bucketType=CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET Testing'
     });
   });
 
-  it('Should enforce SSL only (no access-log PutObject policies)', () => {
+  it('Should enforce SSL and TLS 1.2 only (no access-log PutObject policies)', () => {
     template.hasResourceProperties('AWS::S3::BucketPolicy', {
       PolicyDocument: {
         Version: '2012-10-17',
@@ -88,6 +88,18 @@ describe('S3SecureBucket bucketType=CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET Testing'
             Condition: {
               Bool: {
                 'aws:SecureTransport': 'false',
+              },
+            },
+            Effect: 'Deny',
+            Principal: {
+              AWS: '*',
+            },
+          }),
+          Match.objectLike({
+            Action: 's3:*',
+            Condition: {
+              NumericLessThan: {
+                's3:TlsVersion': 1.2,
               },
             },
             Effect: 'Deny',

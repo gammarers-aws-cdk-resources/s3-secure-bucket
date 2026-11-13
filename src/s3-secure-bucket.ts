@@ -154,6 +154,7 @@ export interface S3SecureBucketProps extends s3.BucketProps {
 }
 
 const CLOUDFRONT_SERVICE_PRINCIPAL = 'cloudfront.amazonaws.com';
+const MINIMUM_TLS_VERSION = 1.2;
 const ELB_SOURCE_ARN = 'arn:aws:elasticloadbalancing:*:*:loadbalancer/*';
 const S3_PUT_OBJECT = 's3:PutObject';
 const AWS_SOURCE_ORG_ID = 'aws:SourceOrgID';
@@ -556,7 +557,7 @@ const addCloudFrontOriginExternalStatements = (
       resources: bucketAndObjectArns,
       conditions: {
         NumericLessThan: {
-          's3:TlsVersion': '1.2',
+          's3:TlsVersion': MINIMUM_TLS_VERSION,
         },
       },
     }),
@@ -614,7 +615,8 @@ const grantCloudFrontOriginRead = (
  *
  * Defaults for every type except {@link S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET}:
  * - `removalPolicy`: {@link RemovalPolicy.RETAIN} (the prop is ignored)
- * - `enforceSSL`: `true` (TLS deny statement on this bucket's policy)
+ * - `enforceSSL`: `true` (deny requests that are not HTTPS)
+ * - `minimumTLSVersion`: `1.2` (deny TLS below 1.2 on this bucket's policy)
  * - `versioned`: `true` unless explicitly set in `props`
  *
  * {@link S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET} uses `removalPolicy` from props
@@ -684,6 +686,8 @@ export class S3SecureBucket extends s3.Bucket {
       publicReadAccess: false,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       enforceSSL: externalPolicyOrigin ? false : true,
+      // CDK applies s3:TlsVersion only when enforceSSL is set. This type adds that deny in addOriginPolicy.
+      minimumTLSVersion: externalPolicyOrigin ? undefined : MINIMUM_TLS_VERSION,
       versioned: externalPolicyOrigin?.versioned
         ?? (props?.versioned !== undefined ? props.versioned : true),
       objectOwnership: legacyAcl?.objectOwnership

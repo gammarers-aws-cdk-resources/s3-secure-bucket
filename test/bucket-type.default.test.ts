@@ -75,6 +75,18 @@ describe('S3SecureBucket bucketType=DEFAULT_BUCKET (implicit) Testing', () => {
                 AWS: '*',
               },
             }),
+            Match.objectLike({
+              Action: 's3:*',
+              Condition: {
+                NumericLessThan: {
+                  's3:TlsVersion': 1.2,
+                },
+              },
+              Effect: 'Deny',
+              Principal: {
+                AWS: '*',
+              },
+            }),
           ]),
         },
       });

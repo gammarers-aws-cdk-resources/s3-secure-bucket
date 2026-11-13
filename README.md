@@ -7,11 +7,11 @@
 
 [![View on Construct Hub](https://constructs.dev/badge?package=s3-secure-bucket)](https://constructs.dev/packages/s3-secure-bucket)
 
-AWS CDK v2 construct for an Amazon S3 bucket with private access, encryption, and `bucketType` presets for pipeline artifacts, CloudFront origins, access logs, and CloudWatch Logs exports. Most types also enforce TLS and versioning on the bucket. `CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET` keeps the bucket policy in another stack.
+AWS CDK v2 construct for an Amazon S3 bucket with private access, encryption, and `bucketType` presets for pipeline artifacts, CloudFront origins, access logs, and CloudWatch Logs exports. Most types also require HTTPS with TLS 1.2 or higher, and enable versioning. `CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET` keeps the bucket policy in another stack.
 
 ## Features
 
-- Private access and block public access. `enforceSSL` denies insecure transport on the bucket policy, except `CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET` (that deny is added by `addOriginPolicy` on a policy you create)
+- Private access and block public access. The bucket policy denies requests that are not HTTPS and denies TLS below 1.2, except `CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET` (those denies are added by `addOriginPolicy` on a policy you create)
 - **Default bucket**: KMS-managed encryption (`aws:kms`) unless overridden
 - **Log / origin / archive types**: S3-managed encryption (`AES256`) for `ACCESS_LOG_BUCKET`, `CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET`, `CLOUDFRONT_ORIGIN_BUCKET`, `CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET`, and `CLOUD_WATCH_LOG_ARCHIVE_BUCKET`
 - Versioning on by default (`CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET` is unversioned and rejects `versioned: true`); object ownership `BucketOwnerEnforced` by default (`ObjectWriter` for CloudFront legacy access logs)
@@ -29,7 +29,7 @@ AWS CDK v2 construct for an Amazon S3 bucket with private access, encryption, an
 
 ## How it works
 
-Creating an `S3SecureBucket` applies private access and block public access. Except for `CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET`, it also applies TLS-only requests, versioning, and `RemovalPolicy.RETAIN`, and any bucket policy is a child of the bucket. `bucketType` selects the encryption default and, for some types, a bucket policy: deploy-role access for a non-default CDK bootstrap qualifier, CloudFront `s3:GetObject` when you call `grantCloudFrontRead`, log delivery for access logs, or CloudWatch Logs export. CloudFront legacy access-log buckets rely on ACL (`LogDeliveryWrite`) instead of those resource policies. Load balancers that write access logs should depend on `accessLogBucketPolicyDependable` so the policy exists before AWS validates the log destination.
+Creating an `S3SecureBucket` applies private access and block public access. Except for `CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET`, it also requires HTTPS at TLS 1.2 or higher, enables versioning, sets `RemovalPolicy.RETAIN`, and keeps any bucket policy as a child of the bucket. `bucketType` selects the encryption default and, for some types, a bucket policy: deploy-role access for a non-default CDK bootstrap qualifier, CloudFront `s3:GetObject` when you call `grantCloudFrontRead`, log delivery for access logs, or CloudWatch Logs export. CloudFront legacy access-log buckets rely on ACL (`LogDeliveryWrite`) instead of those resource policies. Load balancers that write access logs should depend on `accessLogBucketPolicyDependable` so the policy exists before AWS validates the log destination.
 
 `CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET` leaves the bucket policy out of the bucket stack. A bucket has one policy document, and `AWS::S3::BucketPolicy` replaces that document rather than merging with another policy resource. Create the bucket in the storage stack, the distribution in the ingress stack, and the single bucket policy in an associate stack that references both. Call `addOriginPolicy` with that policy and the distribution ARN string. The construct appends the TLS denies and the CloudFront `s3:GetObject` allow onto that document. It does not take an `IDistribution`, so the storage stack does not reference the distribution.
 

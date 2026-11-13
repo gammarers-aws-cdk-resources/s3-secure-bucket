@@ -196,7 +196,7 @@ describe('S3SecureBucket.addOriginPolicy', () => {
       Principal: { AWS: '*' },
       Condition: {
         NumericLessThan: {
-          's3:TlsVersion': '1.2',
+          's3:TlsVersion': 1.2,
         },
       },
     }),
