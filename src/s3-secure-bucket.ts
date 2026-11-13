@@ -175,6 +175,8 @@ export interface S3SecureBucketProps extends s3.BucketProps {
 const CLOUDFRONT_SERVICE_PRINCIPAL = 'cloudfront.amazonaws.com';
 const MINIMUM_TLS_VERSION = 1.2;
 const ELB_SOURCE_ARN = 'arn:aws:elasticloadbalancing:*:*:loadbalancer/*';
+const S3_ALL_ACTIONS = 's3:*';
+const S3_GET_OBJECT = 's3:GetObject';
 const S3_PUT_OBJECT = 's3:PutObject';
 const SSE_HEADER = 's3:x-amz-server-side-encryption';
 const SSE_S3 = 'AES256';
@@ -183,6 +185,8 @@ const SSE_DSSE = 'aws:kms:dsse';
 const AWS_SOURCE_ORG_ID = 'aws:SourceOrgID';
 const AWS_SOURCE_ACCOUNT = 'aws:SourceAccount';
 const AWS_SOURCE_ARN = 'aws:SourceArn';
+// CloudFront origin conditions use an uppercase AWS prefix. aws:SourceArn is a different key.
+const CLOUDFRONT_SOURCE_ARN = 'AWS:SourceArn';
 
 const REQUIRED_LEGACY_ACCESS_CONTROL = s3.BucketAccessControl.LOG_DELIVERY_WRITE;
 const REQUIRED_LEGACY_OBJECT_OWNERSHIP = s3.ObjectOwnership.OBJECT_WRITER;
@@ -468,7 +472,7 @@ const applyDeploymentPipelineArtifactPolicy = (
 
   const { account, region } = stack;
   bucket.addToResourcePolicy(new iam.PolicyStatement({
-    actions: ['s3:*'],
+    actions: [S3_ALL_ACTIONS],
     resources: [
       `${bucket.bucketArn}`,
       `${bucket.bucketArn}/*`,
@@ -508,7 +512,7 @@ const applyAccessLogBucketPolicy = (
         [AWS_SOURCE_ORG_ID]: organizationId,
       },
       ArnLike: {
-        'aws:SourceArn': ELB_SOURCE_ARN,
+        [AWS_SOURCE_ARN]: ELB_SOURCE_ARN,
       },
     };
 
@@ -594,7 +598,7 @@ const applyCloudWatchLogArchivePolicy = (bucket: s3.Bucket, stack: Stack): void 
     sid: 'AllowCloudWatchLogsExportPutObject',
     effect: iam.Effect.ALLOW,
     principals: [logsExportPrincipal],
-    actions: ['s3:PutObject'],
+    actions: [S3_PUT_OBJECT],
     resources: [`${bucket.bucketArn}/*`],
     conditions: {
       StringEquals: {
@@ -648,7 +652,7 @@ const addCloudFrontOriginExternalStatements = (
     new iam.PolicyStatement({
       effect: iam.Effect.DENY,
       principals: [new iam.AnyPrincipal()],
-      actions: ['s3:*'],
+      actions: [S3_ALL_ACTIONS],
       resources: bucketAndObjectArns,
       conditions: {
         Bool: {
@@ -659,7 +663,7 @@ const addCloudFrontOriginExternalStatements = (
     new iam.PolicyStatement({
       effect: iam.Effect.DENY,
       principals: [new iam.AnyPrincipal()],
-      actions: ['s3:*'],
+      actions: [S3_ALL_ACTIONS],
       resources: bucketAndObjectArns,
       conditions: {
         NumericLessThan: {
@@ -670,11 +674,11 @@ const addCloudFrontOriginExternalStatements = (
     new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       principals: [new iam.ServicePrincipal(CLOUDFRONT_SERVICE_PRINCIPAL)],
-      actions: ['s3:GetObject'],
+      actions: [S3_GET_OBJECT],
       resources: [bucket.arnForObjects('*')],
       conditions: {
         StringEquals: {
-          'AWS:SourceArn': distributionArn,
+          [CLOUDFRONT_SOURCE_ARN]: distributionArn,
         },
       },
     }),
@@ -694,11 +698,11 @@ const grantCloudFrontOriginRead = (
     principals: [
       new iam.ServicePrincipal(CLOUDFRONT_SERVICE_PRINCIPAL),
     ],
-    actions: ['s3:GetObject'],
+    actions: [S3_GET_OBJECT],
     resources: [bucket.arnForObjects('*')],
     conditions: {
       StringEquals: {
-        'AWS:SourceArn': distribution.distributionArn,
+        [CLOUDFRONT_SOURCE_ARN]: distribution.distributionArn,
       },
     },
   }));
