@@ -93,3 +93,52 @@ describe('S3SecureBucket bucketType=DEPLOYMENT_PIPELINE_ARTIFACT_BUCKET Testing'
   });
 });
 
+describe('DEPLOYMENT_PIPELINE_ARTIFACT_BUCKET without a custom qualifier', () => {
+  const expectTlsDeniesOnly = (template: Template): void => {
+    template.hasResourceProperties('AWS::S3::BucketPolicy', {
+      PolicyDocument: {
+        Statement: Match.arrayEquals([
+          Match.objectLike({
+            Effect: 'Deny',
+            Action: 's3:*',
+            Condition: {
+              Bool: {
+                'aws:SecureTransport': 'false',
+              },
+            },
+          }),
+          Match.objectLike({
+            Effect: 'Deny',
+            Action: 's3:*',
+            Condition: {
+              NumericLessThan: {
+                's3:TlsVersion': 1.2,
+              },
+            },
+          }),
+        ]),
+      },
+    });
+  };
+
+  it('does not grant the deploy role for the default qualifier', () => {
+    const stack = new Stack(new App(), 'DefaultQualifierStack');
+    new S3SecureBucket(stack, 'Bucket', {
+      bucketType: S3SecureBucketType.DEPLOYMENT_PIPELINE_ARTIFACT_BUCKET,
+    });
+
+    expectTlsDeniesOnly(Template.fromStack(stack));
+  });
+
+  it('does not grant the deploy role when the qualifier is empty', () => {
+    const stack = new Stack(new App(), 'EmptyQualifierStack', {
+      synthesizer: new DefaultStackSynthesizer({ qualifier: '' }),
+    });
+    new S3SecureBucket(stack, 'Bucket', {
+      bucketType: S3SecureBucketType.DEPLOYMENT_PIPELINE_ARTIFACT_BUCKET,
+    });
+
+    expectTlsDeniesOnly(Template.fromStack(stack));
+  });
+});
+
