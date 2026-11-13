@@ -562,7 +562,7 @@ const applyAccessLogBucketPolicy = (
   }));
 
   return {
-    accessLogBucketPolicyDependable: albLogDeliveryPolicyResult.policyDependable ?? bucket,
+    accessLogBucketPolicyDependable: albLogDeliveryPolicyResult.policyDependable,
   };
 };
 
