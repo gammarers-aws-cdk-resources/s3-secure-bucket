@@ -4,7 +4,7 @@
 
 ### S3SecureBucket <a name="S3SecureBucket" id="s3-secure-bucket.S3SecureBucket"></a>
 
-S3 bucket with opinionated secure defaults: private ACLs, block public access, TLS-only access, and encryption (S3-managed for log/origin/archive types;
+S3 bucket with opinionated secure defaults: private ACLs, block public access, and encryption (S3-managed for log, origin, and archive types;
 
 KMS-managed by default otherwise).
 
@@ -85,6 +85,7 @@ When `eventBridgeEnabled` is `true`, EventBridge notification is enabled via an 
 | <code><a href="#s3-secure-bucket.S3SecureBucket.addInventory">addInventory</a></code> | Add an inventory configuration. |
 | <code><a href="#s3-secure-bucket.S3SecureBucket.addLifecycleRule">addLifecycleRule</a></code> | Add a lifecycle rule to the bucket. |
 | <code><a href="#s3-secure-bucket.S3SecureBucket.addMetric">addMetric</a></code> | Adds a metrics configuration for the CloudWatch request metrics from the bucket. |
+| <code><a href="#s3-secure-bucket.S3SecureBucket.addOriginPolicy">addOriginPolicy</a></code> | Appends CloudFront origin statements to a bucket policy created outside this bucket's stack. |
 | <code><a href="#s3-secure-bucket.S3SecureBucket.grantCloudFrontRead">grantCloudFrontRead</a></code> | Allows one CloudFront distribution to read objects through origin access control. |
 
 ---
@@ -863,6 +864,41 @@ Adds a metrics configuration for the CloudWatch request metrics from the bucket.
 - *Type:* aws-cdk-lib.aws_s3.BucketMetrics
 
 The metric configuration to add.
+
+---
+
+##### `addOriginPolicy` <a name="addOriginPolicy" id="s3-secure-bucket.S3SecureBucket.addOriginPolicy"></a>
+
+```typescript
+public addOriginPolicy(policy: BucketPolicy, distributionArn: string): void
+```
+
+Appends CloudFront origin statements to a bucket policy created outside this bucket's stack.
+
+Adds three statements to `policy.document`: deny when `aws:SecureTransport` is false, deny when
+`s3:TlsVersion` is below 1.2, and allow `s3:GetObject` for `cloudfront.amazonaws.com` when
+`AWS:SourceArn` is `distributionArn`. Does not call `addToResourcePolicy`.
+
+Supported only when {@link S3SecureBucketProps.bucketType} is
+{@link S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET}.
+
+###### `policy`<sup>Required</sup> <a name="policy" id="s3-secure-bucket.S3SecureBucket.addOriginPolicy.parameter.policy"></a>
+
+- *Type:* aws-cdk-lib.aws_s3.BucketPolicy
+
+Bucket policy for this bucket.
+
+The caller creates it, typically in another stack.
+
+---
+
+###### `distributionArn`<sup>Required</sup> <a name="distributionArn" id="s3-secure-bucket.S3SecureBucket.addOriginPolicy.parameter.distributionArn"></a>
+
+- *Type:* string
+
+Distribution ARN.
+
+Unresolved tokens are accepted. A resolved empty string is rejected.
 
 ---
 

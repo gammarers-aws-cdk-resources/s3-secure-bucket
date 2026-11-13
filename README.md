@@ -7,20 +7,21 @@
 
 [![View on Construct Hub](https://constructs.dev/badge?package=s3-secure-bucket)](https://constructs.dev/packages/s3-secure-bucket)
 
-AWS CDK v2 construct for an Amazon S3 bucket with private access, TLS-only requests, encryption, and versioning. `bucketType` selects encryption and, where needed, a bucket policy or ACL settings for pipeline artifacts, CloudFront origins, access logs, or CloudWatch Logs exports.
+AWS CDK v2 construct for an Amazon S3 bucket with private access, encryption, and `bucketType` presets for pipeline artifacts, CloudFront origins, access logs, and CloudWatch Logs exports. Most types also enforce TLS and versioning on the bucket. `CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET` keeps the bucket policy in another stack.
 
 ## Features
 
-- Private access, block public access, and deny insecure transport (`enforceSSL`)
+- Private access and block public access. `enforceSSL` denies insecure transport on the bucket policy, except `CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET` (that deny is added by `addOriginPolicy` on a policy you create)
 - **Default bucket**: KMS-managed encryption (`aws:kms`) unless overridden
-- **Log / origin / archive types**: S3-managed encryption (`AES256`) for `ACCESS_LOG_BUCKET`, `CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET`, `CLOUDFRONT_ORIGIN_BUCKET`, and `CLOUD_WATCH_LOG_ARCHIVE_BUCKET`
-- Versioning on by default; object ownership `BucketOwnerEnforced` by default (`ObjectWriter` for CloudFront legacy access logs)
-- `RemovalPolicy.RETAIN` on the bucket
+- **Log / origin / archive types**: S3-managed encryption (`AES256`) for `ACCESS_LOG_BUCKET`, `CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET`, `CLOUDFRONT_ORIGIN_BUCKET`, `CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET`, and `CLOUD_WATCH_LOG_ARCHIVE_BUCKET`
+- Versioning on by default (`CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET` is unversioned and rejects `versioned: true`); object ownership `BucketOwnerEnforced` by default (`ObjectWriter` for CloudFront legacy access logs)
+- `RemovalPolicy.RETAIN` on the bucket (`CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET` uses `removalPolicy` from props when you set it)
 - Optional EventBridge notifications via `eventBridgeEnabled`
 - **`bucketType` presets**
   - **`DEFAULT_BUCKET`**: general-purpose secure bucket (KMS-managed encryption by default)
   - **`DEPLOYMENT_PIPELINE_ARTIFACT_BUCKET`**: optional `s3:*` grant for the CDK deploy role when using a **non-default** bootstrap qualifier
   - **`CLOUDFRONT_ORIGIN_BUCKET`**: S3-managed encryption for a CloudFront origin. `S3BucketOrigin.withOriginAccessControl` adds `s3:GetObject` for that distribution. Call `grantCloudFrontRead` only when the distribution cannot update the bucket policy (`cloudfront.amazonaws.com`, conditioned on the distribution ARN)
+  - **`CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET`**: S3-managed CloudFront origin that does not create a bucket policy. Create one `AWS::S3::BucketPolicy` in the stack that can see both the bucket and the distribution, then call `addOriginPolicy` with that policy and the distribution ARN string
   - **`ACCESS_LOG_BUCKET`**: `s3:PutObject` for ALB/NLB (`logdelivery.elasticloadbalancing.amazonaws.com` + regional **ELBv2 account** from `aws-cdk-lib/region-info` when known), CloudFront standard logging **v2** (`delivery.logs.amazonaws.com`), and S3 server access logging (`logging.s3.amazonaws.com`). Writers default to `AWSLogs/<stack account>/*`; override with `accessLogDelivery` (`allowedSourceAccountIds` or `organizationId`). Not for legacy `Distribution.logBucket`
   - **`CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET`**: S3-managed encryption, `LogDeliveryWrite` ACL, and `ObjectWriter` ownership for CloudFront standard logging (**legacy**) via `Distribution.logBucket` / `logFilePrefix`. Delivery uses ACL, not an `AWSLogs/...` bucket policy
   - **`CLOUD_WATCH_LOG_ARCHIVE_BUCKET`**: `s3:GetBucketAcl` and `s3:PutObject` (`bucket-owner-full-control`) for CloudWatch Logs export tasks (`logs.<region>.amazonaws.com`, same-account log groups in the stack Region)
@@ -28,7 +29,9 @@ AWS CDK v2 construct for an Amazon S3 bucket with private access, TLS-only reque
 
 ## How it works
 
-Creating an `S3SecureBucket` applies private access, block public access, TLS-only requests, versioning, and `RemovalPolicy.RETAIN`. `bucketType` selects the encryption default and, for some types, a bucket policy: deploy-role access for a non-default CDK bootstrap qualifier, CloudFront `s3:GetObject` when you call `grantCloudFrontRead`, log delivery for access logs, or CloudWatch Logs export. CloudFront legacy access-log buckets rely on ACL (`LogDeliveryWrite`) instead of those resource policies. Load balancers that write access logs should depend on `accessLogBucketPolicyDependable` so the policy exists before AWS validates the log destination.
+Creating an `S3SecureBucket` applies private access and block public access. Except for `CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET`, it also applies TLS-only requests, versioning, and `RemovalPolicy.RETAIN`, and any bucket policy is a child of the bucket. `bucketType` selects the encryption default and, for some types, a bucket policy: deploy-role access for a non-default CDK bootstrap qualifier, CloudFront `s3:GetObject` when you call `grantCloudFrontRead`, log delivery for access logs, or CloudWatch Logs export. CloudFront legacy access-log buckets rely on ACL (`LogDeliveryWrite`) instead of those resource policies. Load balancers that write access logs should depend on `accessLogBucketPolicyDependable` so the policy exists before AWS validates the log destination.
+
+`CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET` leaves the bucket policy out of the bucket stack. A bucket has one policy document, and `AWS::S3::BucketPolicy` replaces that document rather than merging with another policy resource. Create the bucket in the storage stack, the distribution in the ingress stack, and the single bucket policy in an associate stack that references both. Call `addOriginPolicy` with that policy and the distribution ARN string. The construct appends the TLS denies and the CloudFront `s3:GetObject` allow onto that document. It does not take an `IDistribution`, so the storage stack does not reference the distribution.
 
 ## Installation
 
@@ -102,6 +105,34 @@ const originBucket = new S3SecureBucket(stack, 'OriginBucket', {
 
 originBucket.grantCloudFrontRead(distribution);
 ```
+
+### CloudFront origin with the bucket policy in another stack
+
+Use `CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET` when the distribution and the bucket policy cannot live in the bucket's stack. The bucket is private, S3-managed (`AES256`), unversioned, and has no `AWS::S3::BucketPolicy`. `removalPolicy` follows props and defaults to `RemovalPolicy.RETAIN`. `versioned: true`, an encryption value other than `S3_MANAGED`, an `objectOwnership` value other than `BUCKET_OWNER_ENFORCED`, or an `accessControl` value other than `PRIVATE` fails at construction. Other `BucketProps`, such as `lifecycleRules`, are passed through.
+
+Create the `BucketPolicy` yourself and pass the distribution ARN as a string. Assemble that ARN in your stacks (for example from an exported distribution ID). Do not pass the distribution object into this construct.
+
+```typescript
+import { Stack } from 'aws-cdk-lib';
+import * as s3 from 'aws-cdk-lib/aws-s3';
+import { S3SecureBucket, S3SecureBucketType } from 's3-secure-bucket';
+
+declare const storageStack: Stack;
+declare const associateStack: Stack;
+declare const distributionArn: string;
+
+const originBucket = new S3SecureBucket(storageStack, 'OriginBucket', {
+  bucketType: S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET,
+});
+
+const originPolicy = new s3.BucketPolicy(associateStack, 'OriginBucketPolicy', {
+  bucket: originBucket,
+});
+
+originBucket.addOriginPolicy(originPolicy, distributionArn);
+```
+
+`addOriginPolicy` appends three statements to that policy only: deny `s3:*` when `aws:SecureTransport` is false, deny `s3:*` when `s3:TlsVersion` is below 1.2, and allow `s3:GetObject` for `cloudfront.amazonaws.com` when `AWS:SourceArn` is `distributionArn`.
 
 ### Centralized access log bucket (ALB / NLB / CloudFront standard logging v2 / S3)
 
@@ -188,7 +219,7 @@ For cross-account export, extend the bucket policy with additional `aws:SourceAc
 
 ## Options
 
-`S3SecureBucket` accepts `S3SecureBucketProps`, which extends [`s3.BucketProps`](https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cdk-lib.aws_s3.BucketProps.html). Standard options such as `bucketName`, `versioned`, `encryption`, `lifecycleRules`, and `eventBridgeEnabled` work as usual alongside the secure defaults. When `eventBridgeEnabled` is `true`, EventBridge notification is enabled on the bucket.
+`S3SecureBucket` accepts `S3SecureBucketProps`, which extends [`s3.BucketProps`](https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cdk-lib.aws_s3.BucketProps.html). Standard options such as `bucketName`, `versioned`, `encryption`, `lifecycleRules`, and `eventBridgeEnabled` work alongside the secure defaults. `CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET` keeps S3-managed encryption, private access, `BUCKET_OWNER_ENFORCED`, and versioning off, and it honors `removalPolicy`. When `eventBridgeEnabled` is `true`, EventBridge notification is enabled on the bucket.
 
 ### Construct props (`S3SecureBucketProps`)
 
@@ -205,6 +236,7 @@ For cross-account export, extend the bucket policy with additional `aws:SourceAc
 | `S3SecureBucketType.DEFAULT_BUCKET` | General-purpose secure bucket |
 | `S3SecureBucketType.DEPLOYMENT_PIPELINE_ARTIFACT_BUCKET` | CDK pipeline artifact bucket (custom bootstrap qualifier) |
 | `S3SecureBucketType.CLOUDFRONT_ORIGIN_BUCKET` | CloudFront origin bucket. `grantCloudFrontRead` adds `s3:GetObject` only when the distribution cannot update the bucket policy. `S3BucketOrigin.withOriginAccessControl` adds that statement itself |
+| `S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET` | CloudFront origin with no bucket policy in the bucket stack. `addOriginPolicy` appends TLS and `s3:GetObject` statements to a `BucketPolicy` you create. Pass the distribution ARN as a string |
 | `S3SecureBucketType.ACCESS_LOG_BUCKET` | Centralized access logs for ALB/NLB, CloudFront standard logging v2, and S3 server access logging (`AWSLogs/<account>/*` by default; widen with `accessLogDelivery`). Not for legacy `Distribution.logBucket` |
 | `S3SecureBucketType.CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET` | CloudFront standard logging (legacy) destination for `Distribution.logBucket` / `logFilePrefix` (`LogDeliveryWrite` ACL, `ObjectWriter`) |
 | `S3SecureBucketType.CLOUD_WATCH_LOG_ARCHIVE_BUCKET` | CloudWatch Logs export archive |

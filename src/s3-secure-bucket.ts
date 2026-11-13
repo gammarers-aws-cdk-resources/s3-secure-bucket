@@ -66,6 +66,16 @@ export const S3SecureBucketType = {
    */
   CLOUDFRONT_ORIGIN_BUCKET: 'CloudFrontOriginBucket',
   /**
+   * CloudFront origin whose bucket policy is created in another stack.
+   *
+   * Uses S3-managed encryption ({@link s3.BucketEncryption.S3_MANAGED}).
+   * Does not create {@link s3.BucketPolicy} here: `enforceSSL` is false, versioning is off,
+   * and `removalPolicy` follows props ({@link RemovalPolicy.RETAIN} when omitted).
+   * {@link S3SecureBucket#addOriginPolicy} appends statements to a policy the caller owns.
+   * Pass the distribution ARN as a string. This type does not accept {@link cloudfront.IDistribution}.
+   */
+  CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET: 'CloudFrontOriginExternalPolicyBucket',
+  /**
    * Destination for CloudFront standard logging (legacy) via
    * {@link cloudfront.Distribution} `logBucket` and `logFilePrefix`.
    *
@@ -152,14 +162,38 @@ const AWS_SOURCE_ARN = 'aws:SourceArn';
 
 const REQUIRED_LEGACY_ACCESS_CONTROL = s3.BucketAccessControl.LOG_DELIVERY_WRITE;
 const REQUIRED_LEGACY_OBJECT_OWNERSHIP = s3.ObjectOwnership.OBJECT_WRITER;
+const REQUIRED_EXTERNAL_POLICY_ENCRYPTION = s3.BucketEncryption.S3_MANAGED;
+const REQUIRED_EXTERNAL_POLICY_ACCESS_CONTROL = s3.BucketAccessControl.PRIVATE;
+const REQUIRED_EXTERNAL_POLICY_OBJECT_OWNERSHIP = s3.ObjectOwnership.BUCKET_OWNER_ENFORCED;
 const LEGACY_CLOUD_FRONT_LOG_ACL_ERROR =
   'CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET requires accessControl LOG_DELIVERY_WRITE and objectOwnership OBJECT_WRITER for legacy CloudFront access logging';
+const EXTERNAL_POLICY_ENCRYPTION_ERROR =
+  'CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET requires encryption S3_MANAGED';
+const EXTERNAL_POLICY_OBJECT_OWNERSHIP_ERROR =
+  'CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET requires objectOwnership BUCKET_OWNER_ENFORCED';
+const EXTERNAL_POLICY_ACCESS_CONTROL_ERROR =
+  'CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET requires accessControl PRIVATE';
+const EXTERNAL_POLICY_VERSIONED_ERROR =
+  'CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET requires versioned false';
+const ADD_ORIGIN_POLICY_BUCKET_TYPE_ERROR =
+  'addOriginPolicy is only supported when bucketType is CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET';
+const ADD_ORIGIN_POLICY_BUCKET_MISMATCH_ERROR =
+  'addOriginPolicy requires a BucketPolicy for this bucket';
+const ADD_ORIGIN_POLICY_EMPTY_ARN_ERROR = 'distributionArn must not be empty';
 const ACCESS_LOG_DELIVERY_EXCLUSIVE_ERROR =
   'accessLogDelivery must specify exactly one of allowedSourceAccountIds or organizationId';
 
 interface CloudFrontLegacyAccessLogAclDefaults {
   readonly accessControl: s3.BucketAccessControl;
   readonly objectOwnership: s3.ObjectOwnership;
+}
+
+interface CloudFrontOriginExternalPolicyDefaults {
+  readonly encryption: s3.BucketEncryption;
+  readonly accessControl: s3.BucketAccessControl;
+  readonly objectOwnership: s3.ObjectOwnership;
+  readonly versioned: boolean;
+  readonly removalPolicy: RemovalPolicy;
 }
 
 interface ResolvedAccessLogDelivery {
@@ -212,6 +246,38 @@ const resolveCloudFrontLegacyAccessLogAcl = (
   return {
     accessControl: REQUIRED_LEGACY_ACCESS_CONTROL,
     objectOwnership: REQUIRED_LEGACY_OBJECT_OWNERSHIP,
+  };
+};
+
+/**
+ * Fixed settings for a CloudFront origin whose bucket policy is owned by another stack.
+ * Rejects props that would turn versioning on or replace the S3-managed, private bucket.
+ */
+const resolveCloudFrontOriginExternalPolicy = (
+  props?: S3SecureBucketProps,
+): CloudFrontOriginExternalPolicyDefaults => {
+  if (props?.encryption !== undefined && props.encryption !== REQUIRED_EXTERNAL_POLICY_ENCRYPTION) {
+    throw new Error(EXTERNAL_POLICY_ENCRYPTION_ERROR);
+  }
+  if (
+    props?.objectOwnership !== undefined
+    && props.objectOwnership !== REQUIRED_EXTERNAL_POLICY_OBJECT_OWNERSHIP
+  ) {
+    throw new Error(EXTERNAL_POLICY_OBJECT_OWNERSHIP_ERROR);
+  }
+  if (props?.accessControl !== undefined && props.accessControl !== REQUIRED_EXTERNAL_POLICY_ACCESS_CONTROL) {
+    throw new Error(EXTERNAL_POLICY_ACCESS_CONTROL_ERROR);
+  }
+  if (props?.versioned === true) {
+    throw new Error(EXTERNAL_POLICY_VERSIONED_ERROR);
+  }
+
+  return {
+    encryption: REQUIRED_EXTERNAL_POLICY_ENCRYPTION,
+    accessControl: REQUIRED_EXTERNAL_POLICY_ACCESS_CONTROL,
+    objectOwnership: REQUIRED_EXTERNAL_POLICY_OBJECT_OWNERSHIP,
+    versioned: false,
+    removalPolicy: props?.removalPolicy ?? RemovalPolicy.RETAIN,
   };
 };
 
@@ -462,6 +528,53 @@ const applyBucketPolicies = (
 };
 
 /**
+ * Appends TLS and CloudFront origin statements to a caller-owned bucket policy.
+ * The policy resource stays in the caller's stack, so this bucket does not reference the distribution.
+ */
+const addCloudFrontOriginExternalStatements = (
+  bucket: s3.Bucket,
+  policy: s3.BucketPolicy,
+  distributionArn: string,
+): void => {
+  const bucketAndObjectArns = [bucket.bucketArn, bucket.arnForObjects('*')];
+  policy.document.addStatements(
+    new iam.PolicyStatement({
+      effect: iam.Effect.DENY,
+      principals: [new iam.AnyPrincipal()],
+      actions: ['s3:*'],
+      resources: bucketAndObjectArns,
+      conditions: {
+        Bool: {
+          'aws:SecureTransport': 'false',
+        },
+      },
+    }),
+    new iam.PolicyStatement({
+      effect: iam.Effect.DENY,
+      principals: [new iam.AnyPrincipal()],
+      actions: ['s3:*'],
+      resources: bucketAndObjectArns,
+      conditions: {
+        NumericLessThan: {
+          's3:TlsVersion': '1.2',
+        },
+      },
+    }),
+    new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      principals: [new iam.ServicePrincipal(CLOUDFRONT_SERVICE_PRINCIPAL)],
+      actions: ['s3:GetObject'],
+      resources: [bucket.arnForObjects('*')],
+      conditions: {
+        StringEquals: {
+          'AWS:SourceArn': distributionArn,
+        },
+      },
+    }),
+  );
+};
+
+/**
  * Allows one CloudFront distribution to read objects through origin access control.
  */
 const grantCloudFrontOriginRead = (
@@ -485,20 +598,29 @@ const grantCloudFrontOriginRead = (
 };
 
 /**
- * S3 bucket with opinionated secure defaults: private ACLs, block public access, TLS-only access,
- * and encryption (S3-managed for log/origin/archive types; KMS-managed by default otherwise).
+ * S3 bucket with opinionated secure defaults: private ACLs, block public access,
+ * and encryption (S3-managed for log, origin, and archive types; KMS-managed by default otherwise).
  *
  * @remarks
- * Secure defaults applied regardless of `props`:
- * - `removalPolicy`: {@link RemovalPolicy.RETAIN}
+ * Secure defaults applied for every type:
  * - `publicReadAccess`: `false`
  * - `blockPublicAccess`: {@link s3.BlockPublicAccess.BLOCK_ALL}
- * - `enforceSSL`: `true`
- * - `versioned`: `true` unless explicitly set in `props`
  * - `objectOwnership`: {@link s3.ObjectOwnership.BUCKET_OWNER_ENFORCED} unless overridden
- *   ({@link S3SecureBucketType.CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET} forces {@link s3.ObjectOwnership.OBJECT_WRITER})
+ *   ({@link S3SecureBucketType.CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET} forces {@link s3.ObjectOwnership.OBJECT_WRITER};
+ *   {@link S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET} rejects any other value)
  * - `accessControl`: {@link s3.BucketAccessControl.PRIVATE} unless overridden
- *   ({@link S3SecureBucketType.CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET} forces {@link s3.BucketAccessControl.LOG_DELIVERY_WRITE})
+ *   ({@link S3SecureBucketType.CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET} forces {@link s3.BucketAccessControl.LOG_DELIVERY_WRITE};
+ *   {@link S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET} rejects any other value)
+ *
+ * Defaults for every type except {@link S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET}:
+ * - `removalPolicy`: {@link RemovalPolicy.RETAIN} (the prop is ignored)
+ * - `enforceSSL`: `true` (TLS deny statement on this bucket's policy)
+ * - `versioned`: `true` unless explicitly set in `props`
+ *
+ * {@link S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET} uses `removalPolicy` from props
+ * ({@link RemovalPolicy.RETAIN} when omitted), `enforceSSL: false` (no {@link s3.BucketPolicy} in this
+ * bucket's stack), and `versioned: false` (`true` is rejected). TLS and CloudFront origin statements
+ * are added with {@link S3SecureBucket#addOriginPolicy}.
  *
  * Bucket-type-specific behavior:
  * - {@link S3SecureBucketType.DEPLOYMENT_PIPELINE_ARTIFACT_BUCKET}: may attach a deploy-role policy when a non-default bootstrap qualifier is present.
@@ -510,6 +632,9 @@ const grantCloudFrontOriginRead = (
  * - {@link S3SecureBucketType.CLOUDFRONT_ORIGIN_BUCKET}: S3-managed encryption.
  *   {@link S3SecureBucket#grantCloudFrontRead} allows `s3:GetObject` when the distribution cannot update this bucket policy.
  *   `S3BucketOrigin.withOriginAccessControl` adds that statement itself.
+ * - {@link S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET}: S3-managed encryption.
+ *   Does not create a bucket policy. {@link S3SecureBucket#addOriginPolicy} appends TLS and CloudFront
+ *   `s3:GetObject` statements to a {@link s3.BucketPolicy} supplied by the caller.
  */
 export class S3SecureBucket extends s3.Bucket {
   /**
@@ -543,20 +668,26 @@ export class S3SecureBucket extends s3.Bucket {
     const legacyAcl = isCloudFrontLegacyAccessLog
       ? resolveCloudFrontLegacyAccessLogAcl(props?.accessControl, props?.objectOwnership)
       : undefined;
+    const externalPolicyOrigin = bucketType === S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET
+      ? resolveCloudFrontOriginExternalPolicy(props)
+      : undefined;
 
     super(scope, id, {
       ...props,
-      removalPolicy: RemovalPolicy.RETAIN,
-      encryption: resolveEncryptionDefault(bucketType, props?.encryption),
+      removalPolicy: externalPolicyOrigin?.removalPolicy ?? RemovalPolicy.RETAIN,
+      encryption: externalPolicyOrigin?.encryption ?? resolveEncryptionDefault(bucketType, props?.encryption),
       accessControl: legacyAcl?.accessControl
+        ?? externalPolicyOrigin?.accessControl
         ?? props?.accessControl
         ?? s3.BucketAccessControl.PRIVATE,
       eventBridgeEnabled: undefined,
       publicReadAccess: false,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      enforceSSL: true,
-      versioned: props?.versioned !== undefined ? props.versioned : true,
+      enforceSSL: externalPolicyOrigin ? false : true,
+      versioned: externalPolicyOrigin?.versioned
+        ?? (props?.versioned !== undefined ? props.versioned : true),
       objectOwnership: legacyAcl?.objectOwnership
+        ?? externalPolicyOrigin?.objectOwnership
         ?? props?.objectOwnership
         ?? s3.ObjectOwnership.BUCKET_OWNER_ENFORCED,
     });
@@ -605,5 +736,35 @@ export class S3SecureBucket extends s3.Bucket {
     }
 
     grantCloudFrontOriginRead(this, distribution);
+  }
+
+  /**
+   * Appends CloudFront origin statements to a bucket policy created outside this bucket's stack.
+   *
+   * Adds three statements to `policy.document`: deny when `aws:SecureTransport` is false, deny when
+   * `s3:TlsVersion` is below 1.2, and allow `s3:GetObject` for `cloudfront.amazonaws.com` when
+   * `AWS:SourceArn` is `distributionArn`. Does not call `addToResourcePolicy`.
+   *
+   * Supported only when {@link S3SecureBucketProps.bucketType} is
+   * {@link S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET}.
+   *
+   * @param policy - Bucket policy for this bucket. The caller creates it, typically in another stack.
+   * @param distributionArn - Distribution ARN. Unresolved tokens are accepted. A resolved empty string is rejected.
+   * @throws Error when `bucketType` is not {@link S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET}.
+   * @throws Error when `policy` is for a different bucket.
+   * @throws Error when `distributionArn` is a resolved empty string.
+   */
+  public addOriginPolicy(policy: s3.BucketPolicy, distributionArn: string): void {
+    if (this.bucketType !== S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET) {
+      throw new Error(ADD_ORIGIN_POLICY_BUCKET_TYPE_ERROR);
+    }
+    if (policy.bucket !== this) {
+      throw new Error(ADD_ORIGIN_POLICY_BUCKET_MISMATCH_ERROR);
+    }
+    if (!Token.isUnresolved(distributionArn) && distributionArn === '') {
+      throw new Error(ADD_ORIGIN_POLICY_EMPTY_ARN_ERROR);
+    }
+
+    addCloudFrontOriginExternalStatements(this, policy, distributionArn);
   }
 }
