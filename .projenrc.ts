@@ -5,7 +5,7 @@ const project = new ProjenCdkConstructLibrary({
   repositoryUrl: 'https://github.com/gammarers-aws-cdk-resources/s3-secure-bucket.git',
   description: 'AWS CDK construct for a secure Amazon S3 bucket with private access, encryption, versioning, and bucketType presets for logs and origins.',
   devDeps: [
-    '@gammarers/projen-projects@^0.5.10',
+    '@gammarers/projen-projects@^0.8.0',
   ],
   releaseToNpm: true,
   npmTrustedPublishing: true,
