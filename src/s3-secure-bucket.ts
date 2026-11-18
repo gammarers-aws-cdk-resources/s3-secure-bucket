@@ -71,6 +71,8 @@ export const S3SecureBucketType = {
    * Uses S3-managed encryption ({@link s3.BucketEncryption.S3_MANAGED}).
    * Does not create {@link s3.BucketPolicy} here: `enforceSSL` is false, versioning is off,
    * and `removalPolicy` follows props ({@link RemovalPolicy.RETAIN} when omitted).
+   * Omits `accessControl` and rejects any value. `objectOwnership` stays
+   * {@link s3.ObjectOwnership.BUCKET_OWNER_ENFORCED}.
    * {@link S3SecureBucket#addOriginPolicy} appends statements to a policy the caller owns.
    * Pass the distribution ARN as a string. This type does not accept {@link cloudfront.IDistribution}.
    */
@@ -191,7 +193,6 @@ const CLOUDFRONT_SOURCE_ARN = 'AWS:SourceArn';
 const REQUIRED_LEGACY_ACCESS_CONTROL = s3.BucketAccessControl.LOG_DELIVERY_WRITE;
 const REQUIRED_LEGACY_OBJECT_OWNERSHIP = s3.ObjectOwnership.OBJECT_WRITER;
 const REQUIRED_EXTERNAL_POLICY_ENCRYPTION = s3.BucketEncryption.S3_MANAGED;
-const REQUIRED_EXTERNAL_POLICY_ACCESS_CONTROL = s3.BucketAccessControl.PRIVATE;
 const REQUIRED_EXTERNAL_POLICY_OBJECT_OWNERSHIP = s3.ObjectOwnership.BUCKET_OWNER_ENFORCED;
 const LEGACY_CLOUD_FRONT_LOG_ACL_ERROR =
   'CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET requires accessControl LOG_DELIVERY_WRITE and objectOwnership OBJECT_WRITER for legacy CloudFront access logging';
@@ -200,7 +201,7 @@ const EXTERNAL_POLICY_ENCRYPTION_ERROR =
 const EXTERNAL_POLICY_OBJECT_OWNERSHIP_ERROR =
   'CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET requires objectOwnership BUCKET_OWNER_ENFORCED';
 const EXTERNAL_POLICY_ACCESS_CONTROL_ERROR =
-  'CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET requires accessControl PRIVATE';
+  'CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET does not accept accessControl';
 const EXTERNAL_POLICY_VERSIONED_ERROR =
   'CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET requires versioned false';
 const ADD_ORIGIN_POLICY_BUCKET_TYPE_ERROR =
@@ -220,7 +221,6 @@ interface CloudFrontLegacyAccessLogAclDefaults {
 
 interface CloudFrontOriginExternalPolicyDefaults {
   readonly encryption: s3.BucketEncryption;
-  readonly accessControl: s3.BucketAccessControl;
   readonly objectOwnership: s3.ObjectOwnership;
   readonly versioned: boolean;
   readonly removalPolicy: RemovalPolicy;
@@ -362,7 +362,8 @@ const resolveCloudFrontLegacyAccessLogAcl = (
 
 /**
  * Fixed settings for a CloudFront origin whose bucket policy is owned by another stack.
- * Rejects props that would turn versioning on or replace the S3-managed, private bucket.
+ * Rejects versioning, encryption other than S3-managed, object ownership other than
+ * bucket owner enforced, and any accessControl value.
  */
 const resolveCloudFrontOriginExternalPolicy = (
   props?: S3SecureBucketProps,
@@ -376,7 +377,7 @@ const resolveCloudFrontOriginExternalPolicy = (
   ) {
     throw new Error(EXTERNAL_POLICY_OBJECT_OWNERSHIP_ERROR);
   }
-  if (props?.accessControl !== undefined && props.accessControl !== REQUIRED_EXTERNAL_POLICY_ACCESS_CONTROL) {
+  if (props?.accessControl !== undefined) {
     throw new Error(EXTERNAL_POLICY_ACCESS_CONTROL_ERROR);
   }
   if (props?.versioned === true) {
@@ -385,7 +386,6 @@ const resolveCloudFrontOriginExternalPolicy = (
 
   return {
     encryption: REQUIRED_EXTERNAL_POLICY_ENCRYPTION,
-    accessControl: REQUIRED_EXTERNAL_POLICY_ACCESS_CONTROL,
     objectOwnership: REQUIRED_EXTERNAL_POLICY_OBJECT_OWNERSHIP,
     versioned: false,
     removalPolicy: props?.removalPolicy ?? RemovalPolicy.RETAIN,
@@ -721,7 +721,7 @@ const grantCloudFrontOriginRead = (
  *   {@link S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET} rejects any other value)
  * - `accessControl`: {@link s3.BucketAccessControl.PRIVATE} unless overridden
  *   ({@link S3SecureBucketType.CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET} forces {@link s3.BucketAccessControl.LOG_DELIVERY_WRITE};
- *   {@link S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET} rejects any other value)
+ *   {@link S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET} omits `accessControl` and rejects any value)
  *
  * Defaults for every type except {@link S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET}:
  * - `removalPolicy`: {@link RemovalPolicy.RETAIN} (the prop is ignored)
@@ -795,6 +795,11 @@ export class S3SecureBucket extends s3.Bucket {
     const externalPolicyOrigin = bucketType === S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET
       ? resolveCloudFrontOriginExternalPolicy(props)
       : undefined;
+    const accessControl = externalPolicyOrigin !== undefined
+      ? undefined
+      : legacyAcl?.accessControl
+        ?? props?.accessControl
+        ?? s3.BucketAccessControl.PRIVATE;
     const objectEncryptionHeader = props?.denyUnencryptedObjectUploads === true
       ? resolveRequiredSseHeader(
         externalPolicyOrigin?.encryption ?? resolveEncryptionDefault(bucketType, props?.encryption),
@@ -805,10 +810,7 @@ export class S3SecureBucket extends s3.Bucket {
       ...props,
       removalPolicy: externalPolicyOrigin?.removalPolicy ?? RemovalPolicy.RETAIN,
       encryption: externalPolicyOrigin?.encryption ?? resolveEncryptionDefault(bucketType, props?.encryption),
-      accessControl: legacyAcl?.accessControl
-        ?? externalPolicyOrigin?.accessControl
-        ?? props?.accessControl
-        ?? s3.BucketAccessControl.PRIVATE,
+      accessControl,
       eventBridgeEnabled: undefined,
       publicReadAccess: false,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,

@@ -56,10 +56,10 @@ describe('S3SecureBucket bucketType=CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET', (
     }
   });
 
-  it('uses S3 managed encryption, blocks public access, and enforces the bucket owner', () => {
+  it('uses S3 managed encryption, blocks public access, enforces the bucket owner, and omits access control', () => {
     template.hasResourceProperties('AWS::S3::Bucket', {
       ...encryptionProperties,
-      AccessControl: 'Private',
+      AccessControl: Match.absent(),
       PublicAccessBlockConfiguration: Match.objectEquals({
         BlockPublicAcls: true,
         BlockPublicPolicy: true,
@@ -89,13 +89,12 @@ describe('S3SecureBucket bucketType=CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET', (
 });
 
 describe('S3SecureBucket bucketType=CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET props', () => {
-  it('accepts the fixed encryption, ownership, access control, and versioned false', () => {
+  it('accepts the fixed encryption, ownership, and versioned false', () => {
     const stack = new Stack(new App(), 'TestingStack');
     expect(() => {
       createExternalPolicyBucket(stack, 'OriginBucket', {
         encryption: s3.BucketEncryption.S3_MANAGED,
         objectOwnership: s3.ObjectOwnership.BUCKET_OWNER_ENFORCED,
-        accessControl: s3.BucketAccessControl.PRIVATE,
         versioned: false,
       });
     }).not.toThrow();
@@ -130,13 +129,14 @@ describe('S3SecureBucket bucketType=CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET pro
     }).toThrow('CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET requires objectOwnership BUCKET_OWNER_ENFORCED');
   });
 
-  it('rejects accessControl other than PRIVATE', () => {
+  it.each([
+    s3.BucketAccessControl.PRIVATE,
+    s3.BucketAccessControl.LOG_DELIVERY_WRITE,
+  ])('rejects accessControl %s', (accessControl) => {
     const stack = new Stack(new App(), 'TestingStack');
     expect(() => {
-      createExternalPolicyBucket(stack, 'OriginBucket', {
-        accessControl: s3.BucketAccessControl.LOG_DELIVERY_WRITE,
-      });
-    }).toThrow('CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET requires accessControl PRIVATE');
+      createExternalPolicyBucket(stack, 'OriginBucket', { accessControl });
+    }).toThrow('CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET does not accept accessControl');
   });
 
   it('sets DeletionPolicy to Delete when removalPolicy is DESTROY', () => {

@@ -111,7 +111,7 @@ originBucket.grantCloudFrontRead(distribution);
 
 ### CloudFront origin with the bucket policy in another stack
 
-Use `CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET` when the distribution and the bucket policy cannot live in the bucket's stack. The bucket is private, S3-managed (`AES256`), unversioned, and has no `AWS::S3::BucketPolicy`. `removalPolicy` follows props and defaults to `RemovalPolicy.RETAIN`. `versioned: true`, an encryption value other than `S3_MANAGED`, an `objectOwnership` value other than `BUCKET_OWNER_ENFORCED`, or an `accessControl` value other than `PRIVATE` fails at construction. Other `BucketProps`, such as `lifecycleRules`, are passed through.
+Use `CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET` when the distribution and the bucket policy cannot live in the bucket's stack. The bucket is private, S3-managed (`AES256`), unversioned, and has no `AWS::S3::BucketPolicy` and no `AccessControl`. `removalPolicy` follows props and defaults to `RemovalPolicy.RETAIN`. `versioned: true`, an encryption value other than `S3_MANAGED`, an `objectOwnership` value other than `BUCKET_OWNER_ENFORCED`, or any `accessControl` value fails at construction. Other `BucketProps`, such as `lifecycleRules`, are passed through.
 
 Create the `BucketPolicy` yourself and pass the distribution ARN as a string. Assemble that ARN in your stacks (for example from an exported distribution ID). Do not pass the distribution object into this construct.
 
@@ -222,7 +222,7 @@ For cross-account export, extend the bucket policy with additional `aws:SourceAc
 
 ## Options
 
-`S3SecureBucket` accepts `S3SecureBucketProps`, which extends [`s3.BucketProps`](https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cdk-lib.aws_s3.BucketProps.html). Standard options such as `bucketName`, `versioned`, `encryption`, `lifecycleRules`, and `eventBridgeEnabled` work alongside the secure defaults. `CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET` keeps S3-managed encryption, private access, `BUCKET_OWNER_ENFORCED`, and versioning off, and it honors `removalPolicy`. When `eventBridgeEnabled` is `true`, EventBridge notification is enabled on the bucket.
+`S3SecureBucket` accepts `S3SecureBucketProps`, which extends [`s3.BucketProps`](https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cdk-lib.aws_s3.BucketProps.html). Standard options such as `bucketName`, `versioned`, `encryption`, `lifecycleRules`, and `eventBridgeEnabled` work alongside the secure defaults. `CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET` keeps S3-managed encryption, private access, `BUCKET_OWNER_ENFORCED`, and versioning off. It omits `accessControl` and honors `removalPolicy`. When `eventBridgeEnabled` is `true`, EventBridge notification is enabled on the bucket.
 
 ### Construct props (`S3SecureBucketProps`)
 
