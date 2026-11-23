@@ -4,6 +4,8 @@
 
 ### S3SecureBucket <a name="S3SecureBucket" id="s3-secure-bucket.S3SecureBucket"></a>
 
+- *Implements:* constructs.IConstruct, constructs.IDependable, aws-cdk-lib.IResource, aws-cdk-lib.interfaces.IEnvironmentAware, aws-cdk-lib.aws_s3.IBucket, aws-cdk-lib.interfaces.aws_s3.IBucketRef, aws-cdk-lib.aws_iam.IEncryptedResource
+
 S3 bucket with opinionated secure defaults: private ACLs, block public access, and encryption (S3-managed for log, origin, and archive types;
 
 KMS-managed by default otherwise).
