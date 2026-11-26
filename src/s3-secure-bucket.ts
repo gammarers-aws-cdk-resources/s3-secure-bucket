@@ -526,7 +526,7 @@ const assertAccountId = (accountId: string): void => {
   if (isAwsAccountId(accountId)) {
     return;
   }
-  throw new Error(`allowedSourceAccountIds contains an invalid AWS account ID: ${accountId}`);
+  throw new Error('allowedSourceAccountIds contains an invalid AWS account ID');
 };
 
 const resolveOrganizationDelivery = (
@@ -534,7 +534,7 @@ const resolveOrganizationDelivery = (
   organizationId: string,
 ): ResolvedAccessLogDelivery => {
   if (!Token.isUnresolved(organizationId) && !isAwsOrganizationId(organizationId)) {
-    throw new Error(`organizationId must be an AWS Organizations ID (o-...), got: ${organizationId}`);
+    throw new Error('organizationId must be an AWS Organizations ID (o-...)');
   }
   return {
     awsLogsResources: [`${bucketArn}/AWSLogs/*`],

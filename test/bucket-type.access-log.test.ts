@@ -380,7 +380,7 @@ describe('S3SecureBucket bucketType=ACCESS_LOG_BUCKET accessLogDelivery', () => 
       accessLogDelivery: {
         allowedSourceAccountIds: ['not-an-account'],
       },
-    })).toThrow('allowedSourceAccountIds contains an invalid AWS account ID: not-an-account');
+    })).toThrow('allowedSourceAccountIds contains an invalid AWS account ID');
   });
 
   it('throws when organizationId is invalid', () => {
@@ -396,7 +396,7 @@ describe('S3SecureBucket bucketType=ACCESS_LOG_BUCKET accessLogDelivery', () => 
       accessLogDelivery: {
         organizationId: 'not-an-org',
       },
-    })).toThrow('organizationId must be an AWS Organizations ID (o-...), got: not-an-org');
+    })).toThrow('organizationId must be an AWS Organizations ID (o-...)');
   });
 
   it('skips account ID format checks for unresolved tokens', () => {
