@@ -4,9 +4,25 @@ import {
   Stack,
   Token,
 } from 'aws-cdk-lib';
-import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
-import * as iam from 'aws-cdk-lib/aws-iam';
-import * as s3 from 'aws-cdk-lib/aws-s3';
+import type { IDistribution } from 'aws-cdk-lib/aws-cloudfront';
+import {
+  AccountPrincipal,
+  AnyPrincipal,
+  ArnPrincipal,
+  Effect,
+  PolicyStatement,
+  ServicePrincipal,
+} from 'aws-cdk-lib/aws-iam';
+import {
+  BlockPublicAccess,
+  Bucket,
+  BucketAccessControl,
+  BucketEncryption,
+  type BucketPolicy,
+  type BucketProps,
+  type CfnBucket,
+  ObjectOwnership,
+} from 'aws-cdk-lib/aws-s3';
 import { FactName, RegionInfo } from 'aws-cdk-lib/region-info';
 import { Construct, IDependable } from 'constructs';
 
@@ -62,7 +78,7 @@ export const S3SecureBucketType = {
   /**
    * Origin bucket for CloudFront distributions.
    *
-   * Uses S3-managed encryption ({@link s3.BucketEncryption.S3_MANAGED}) by default.
+   * Uses S3-managed encryption ({@link BucketEncryption.S3_MANAGED}) by default.
    * `S3SecureBucket.grantCloudFrontRead` allows `s3:GetObject` from one distribution
    * through origin access control when that distribution cannot update this bucket policy.
    * `S3BucketOrigin.withOriginAccessControl` adds the same statement itself.
@@ -71,23 +87,23 @@ export const S3SecureBucketType = {
   /**
    * CloudFront origin whose bucket policy is created in another stack.
    *
-   * Uses S3-managed encryption ({@link s3.BucketEncryption.S3_MANAGED}).
-   * Does not create a TLS {@link s3.BucketPolicy} here: `enforceSSL` is false, versioning is off,
+   * Uses S3-managed encryption ({@link BucketEncryption.S3_MANAGED}).
+   * Does not create a TLS {@link BucketPolicy} here: `enforceSSL` is false, versioning is off,
    * and `removalPolicy` follows props ({@link RemovalPolicy.RETAIN} when omitted).
    * {@link S3SecureBucketProps.allowInsecureOverrides} can set `publicReadAccess`, which adds a bucket policy.
    * Omits `accessControl` and rejects any value. `objectOwnership` stays
-   * {@link s3.ObjectOwnership.BUCKET_OWNER_ENFORCED}.
+   * {@link ObjectOwnership.BUCKET_OWNER_ENFORCED}.
    * {@link S3SecureBucket#addOriginPolicy} appends statements to a policy the caller owns.
-   * Pass the distribution ARN as a string. This type does not accept {@link cloudfront.IDistribution}.
+   * Pass the distribution ARN as a string. This type does not accept {@link IDistribution}.
    */
   CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET: 'CloudFrontOriginExternalPolicyBucket',
   /**
    * Destination for CloudFront standard logging (legacy) via
-   * {@link cloudfront.Distribution} `logBucket` and `logFilePrefix`.
+   * {@link aws-cdk-lib/aws-cloudfront.Distribution} `logBucket` and `logFilePrefix`.
    *
-   * Uses S3-managed encryption ({@link s3.BucketEncryption.S3_MANAGED}).
-   * Sets `accessControl` to {@link s3.BucketAccessControl.LOG_DELIVERY_WRITE} and
-   * `objectOwnership` to {@link s3.ObjectOwnership.OBJECT_WRITER} so ACL-based
+   * Uses S3-managed encryption ({@link BucketEncryption.S3_MANAGED}).
+   * Sets `accessControl` to {@link BucketAccessControl.LOG_DELIVERY_WRITE} and
+   * `objectOwnership` to {@link ObjectOwnership.OBJECT_WRITER} so ACL-based
    * log delivery works. Does not attach `ACCESS_LOG_BUCKET` resource policies;
    * object keys follow the caller-supplied prefix (for example `hostname/original-log/`),
    * not `AWSLogs/<account>/*`.
@@ -133,11 +149,11 @@ export type S3SecureBucketType = typeof S3SecureBucketType[keyof typeof S3Secure
 /**
  * Construction properties for {@link S3SecureBucket}.
  *
- * Extends {@link s3.BucketProps}. Several fields receive secure defaults inside the construct.
+ * Extends {@link BucketProps}. Several fields receive secure defaults inside the construct.
  * `removalPolicy`, `publicReadAccess`, `blockPublicAccess`, `enforceSSL`, and `minimumTLSVersion`
  * stay at those defaults unless {@link S3SecureBucketProps.allowInsecureOverrides} is true.
  */
-export interface S3SecureBucketProps extends s3.BucketProps {
+export interface S3SecureBucketProps extends BucketProps {
   /**
    * Selects encryption defaults and optional resource-policy or ACL settings.
    *
@@ -243,13 +259,13 @@ const CONDITION_KEY = Object.freeze({
 } as const);
 
 const REQUIRED_LEGACY_ACCESS_LOG = Object.freeze({
-  ACCESS_CONTROL: s3.BucketAccessControl.LOG_DELIVERY_WRITE,
-  OBJECT_OWNERSHIP: s3.ObjectOwnership.OBJECT_WRITER,
+  ACCESS_CONTROL: BucketAccessControl.LOG_DELIVERY_WRITE,
+  OBJECT_OWNERSHIP: ObjectOwnership.OBJECT_WRITER,
 } as const);
 
 const REQUIRED_EXTERNAL_POLICY = Object.freeze({
-  ENCRYPTION: s3.BucketEncryption.S3_MANAGED,
-  OBJECT_OWNERSHIP: s3.ObjectOwnership.BUCKET_OWNER_ENFORCED,
+  ENCRYPTION: BucketEncryption.S3_MANAGED,
+  OBJECT_OWNERSHIP: ObjectOwnership.BUCKET_OWNER_ENFORCED,
 } as const);
 
 const ERROR = Object.freeze({
@@ -279,13 +295,13 @@ const ERROR = Object.freeze({
 } as const);
 
 interface CloudFrontLegacyAccessLogAclDefaults {
-  readonly accessControl: s3.BucketAccessControl;
-  readonly objectOwnership: s3.ObjectOwnership;
+  readonly accessControl: BucketAccessControl;
+  readonly objectOwnership: ObjectOwnership;
 }
 
 interface CloudFrontOriginExternalPolicyDefaults {
-  readonly encryption: s3.BucketEncryption;
-  readonly objectOwnership: s3.ObjectOwnership;
+  readonly encryption: BucketEncryption;
+  readonly objectOwnership: ObjectOwnership;
   readonly versioned: boolean;
   readonly removalPolicy: RemovalPolicy;
 }
@@ -293,7 +309,7 @@ interface CloudFrontOriginExternalPolicyDefaults {
 interface SecureAccessDefaults {
   readonly removalPolicy: RemovalPolicy;
   readonly publicReadAccess: boolean;
-  readonly blockPublicAccess: s3.BlockPublicAccess;
+  readonly blockPublicAccess: BlockPublicAccess;
   readonly enforceSSL: boolean;
   readonly minimumTLSVersion?: number;
 }
@@ -317,28 +333,28 @@ const isAwsOrganizationId = (value: string): boolean => /^o-[a-z0-9]{10,32}$/.te
  */
 const resolveEncryptionDefault = (
   bucketType: S3SecureBucketType,
-  propsEncryption?: s3.BucketEncryption,
-): s3.BucketEncryption => {
+  propsEncryption?: BucketEncryption,
+): BucketEncryption => {
   if (
     bucketType === S3SecureBucketType.CLOUDFRONT_ORIGIN_BUCKET
     || bucketType === S3SecureBucketType.ACCESS_LOG_BUCKET
     || bucketType === S3SecureBucketType.CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET
     || bucketType === S3SecureBucketType.CLOUD_WATCH_LOG_ARCHIVE_BUCKET
   ) {
-    return s3.BucketEncryption.S3_MANAGED;
+    return BucketEncryption.S3_MANAGED;
   }
-  return propsEncryption ?? s3.BucketEncryption.KMS_MANAGED;
+  return propsEncryption ?? BucketEncryption.KMS_MANAGED;
 };
 
 /**
  * Header value PutObject must send when explicit encryption is required.
  * S3-managed and the deprecated unencrypted setting both use SSE-S3.
  */
-const resolveRequiredSseHeader = (encryption: s3.BucketEncryption): string => {
-  if (encryption === s3.BucketEncryption.KMS || encryption === s3.BucketEncryption.KMS_MANAGED) {
+const resolveRequiredSseHeader = (encryption: BucketEncryption): string => {
+  if (encryption === BucketEncryption.KMS || encryption === BucketEncryption.KMS_MANAGED) {
     return SSE_ALGORITHM.KMS;
   }
-  if (encryption === s3.BucketEncryption.DSSE || encryption === s3.BucketEncryption.DSSE_MANAGED) {
+  if (encryption === BucketEncryption.DSSE || encryption === BucketEncryption.DSSE_MANAGED) {
     return SSE_ALGORITHM.DSSE;
   }
   return SSE_ALGORITHM.S3;
@@ -365,14 +381,14 @@ const isServiceLogBucket = (bucketType: S3SecureBucketType): boolean => {
  * Denies object uploads that omit server-side encryption or name a different algorithm.
  */
 const unencryptedObjectUploadDenies = (
-  bucket: s3.Bucket,
+  bucket: Bucket,
   sseHeader: string,
-): iam.PolicyStatement[] => {
+): PolicyStatement[] => {
   return [
-    new iam.PolicyStatement({
+    new PolicyStatement({
       sid: 'DenyIncorrectEncryptionHeader',
-      effect: iam.Effect.DENY,
-      principals: [new iam.AnyPrincipal()],
+      effect: Effect.DENY,
+      principals: [new AnyPrincipal()],
       actions: [S3_ACTION.PUT_OBJECT],
       resources: [bucket.arnForObjects('*')],
       conditions: {
@@ -381,10 +397,10 @@ const unencryptedObjectUploadDenies = (
         },
       },
     }),
-    new iam.PolicyStatement({
+    new PolicyStatement({
       sid: 'DenyUnencryptedObjectUploads',
-      effect: iam.Effect.DENY,
-      principals: [new iam.AnyPrincipal()],
+      effect: Effect.DENY,
+      principals: [new AnyPrincipal()],
       actions: [S3_ACTION.PUT_OBJECT],
       resources: [bucket.arnForObjects('*')],
       conditions: {
@@ -397,9 +413,9 @@ const unencryptedObjectUploadDenies = (
 };
 
 const addUnencryptedObjectUploadDenies = (
-  bucket: s3.Bucket,
+  bucket: Bucket,
   sseHeader: string,
-  policy?: s3.BucketPolicy,
+  policy?: BucketPolicy,
 ): void => {
   const statements = unencryptedObjectUploadDenies(bucket, sseHeader);
   if (policy !== undefined) {
@@ -416,8 +432,8 @@ const addUnencryptedObjectUploadDenies = (
  * Throws when the caller passes a value other than the required defaults.
  */
 const resolveCloudFrontLegacyAccessLogAcl = (
-  propsAccessControl?: s3.BucketAccessControl,
-  propsObjectOwnership?: s3.ObjectOwnership,
+  propsAccessControl?: BucketAccessControl,
+  propsObjectOwnership?: ObjectOwnership,
 ): CloudFrontLegacyAccessLogAclDefaults => {
   if (propsAccessControl !== undefined && propsAccessControl !== REQUIRED_LEGACY_ACCESS_LOG.ACCESS_CONTROL) {
     throw new Error(ERROR.LEGACY_CLOUD_FRONT_LOG_ACL);
@@ -475,8 +491,8 @@ const resolveSecureAccess = (
   const allowInsecureOverrides = props?.allowInsecureOverrides === true;
   const publicReadAccess = allowInsecureOverrides ? (props?.publicReadAccess ?? false) : false;
   const blockPublicAccess = allowInsecureOverrides
-    ? (props?.blockPublicAccess ?? s3.BlockPublicAccess.BLOCK_ALL)
-    : s3.BlockPublicAccess.BLOCK_ALL;
+    ? (props?.blockPublicAccess ?? BlockPublicAccess.BLOCK_ALL)
+    : BlockPublicAccess.BLOCK_ALL;
 
   if (externalPolicyOrigin !== undefined) {
     if (
@@ -591,7 +607,7 @@ const resolveAccessLogDelivery = (
  * The bucket is versioned, so reads include GetObjectVersion and large uploads can abort a multipart upload.
  */
 const applyDeploymentPipelineArtifactPolicy = (
-  bucket: s3.Bucket,
+  bucket: Bucket,
   stack: Stack,
 ): void => {
   const qualifier = stack.synthesizer.bootstrapQualifier;
@@ -600,15 +616,15 @@ const applyDeploymentPipelineArtifactPolicy = (
   }
 
   const { account, region } = stack;
-  const deployRole = new iam.ArnPrincipal(
+  const deployRole = new ArnPrincipal(
     `arn:aws:iam::${account}:role/cdk-${qualifier}-deploy-role-${account}-${region}`,
   );
-  bucket.addToResourcePolicy(new iam.PolicyStatement({
+  bucket.addToResourcePolicy(new PolicyStatement({
     actions: [...DEPLOY_ROLE_ACTION.BUCKET],
     resources: [bucket.bucketArn],
     principals: [deployRole],
   }));
-  bucket.addToResourcePolicy(new iam.PolicyStatement({
+  bucket.addToResourcePolicy(new PolicyStatement({
     actions: [...DEPLOY_ROLE_ACTION.OBJECT],
     resources: [bucket.arnForObjects('*')],
     principals: [deployRole],
@@ -619,7 +635,7 @@ const applyDeploymentPipelineArtifactPolicy = (
  * Adds `s3:PutObject` for ALB/NLB, CloudFront standard logging (v2), and S3 server access logging.
  */
 const applyAccessLogBucketPolicy = (
-  bucket: s3.Bucket,
+  bucket: Bucket,
   stack: Stack,
   accessLogDelivery?: AccessLogDeliveryScope,
 ): BucketPolicyApplyResult => {
@@ -649,10 +665,10 @@ const applyAccessLogBucketPolicy = (
     };
 
   // Allow ALB / NLB log delivery (modern service principal path; also required in opt-in regions).
-  const albLogDeliveryPolicyResult = bucket.addToResourcePolicy(new iam.PolicyStatement({
-    effect: iam.Effect.ALLOW,
+  const albLogDeliveryPolicyResult = bucket.addToResourcePolicy(new PolicyStatement({
+    effect: Effect.ALLOW,
     principals: [
-      new iam.ServicePrincipal('logdelivery.elasticloadbalancing.amazonaws.com'),
+      new ServicePrincipal('logdelivery.elasticloadbalancing.amazonaws.com'),
     ],
     actions: [S3_ACTION.PUT_OBJECT],
     resources: awsLogsResources,
@@ -664,10 +680,10 @@ const applyAccessLogBucketPolicy = (
     ? stack.regionalFact(FactName.ELBV2_ACCOUNT)
     : RegionInfo.get(stack.region).elbv2Account;
   if (elbAccountId) {
-    bucket.addToResourcePolicy(new iam.PolicyStatement({
-      effect: iam.Effect.ALLOW,
+    bucket.addToResourcePolicy(new PolicyStatement({
+      effect: Effect.ALLOW,
       principals: [
-        new iam.AccountPrincipal(elbAccountId),
+        new AccountPrincipal(elbAccountId),
       ],
       actions: [S3_ACTION.PUT_OBJECT],
       resources: awsLogsResources,
@@ -676,10 +692,10 @@ const applyAccessLogBucketPolicy = (
   }
 
   // Allow CloudFront standard logging (v2) to write logs.
-  bucket.addToResourcePolicy(new iam.PolicyStatement({
-    effect: iam.Effect.ALLOW,
+  bucket.addToResourcePolicy(new PolicyStatement({
+    effect: Effect.ALLOW,
     principals: [
-      new iam.ServicePrincipal('delivery.logs.amazonaws.com'),
+      new ServicePrincipal('delivery.logs.amazonaws.com'),
     ],
     actions: [S3_ACTION.PUT_OBJECT],
     resources: awsLogsResources,
@@ -687,10 +703,10 @@ const applyAccessLogBucketPolicy = (
   }));
 
   // Allow S3 server access logging to write logs when required by configuration.
-  bucket.addToResourcePolicy(new iam.PolicyStatement({
-    effect: iam.Effect.ALLOW,
+  bucket.addToResourcePolicy(new PolicyStatement({
+    effect: Effect.ALLOW,
     principals: [
-      new iam.ServicePrincipal('logging.s3.amazonaws.com'),
+      new ServicePrincipal('logging.s3.amazonaws.com'),
     ],
     actions: [S3_ACTION.PUT_OBJECT],
     resources: awsLogsResources,
@@ -705,14 +721,14 @@ const applyAccessLogBucketPolicy = (
 /**
  * Adds CloudWatch Logs export-task principals for the stack account and region.
  */
-const applyCloudWatchLogArchivePolicy = (bucket: s3.Bucket, stack: Stack): void => {
+const applyCloudWatchLogArchivePolicy = (bucket: Bucket, stack: Stack): void => {
   const { account, region } = stack;
-  const logsExportPrincipal = new iam.ServicePrincipal(`logs.${region}.amazonaws.com`);
+  const logsExportPrincipal = new ServicePrincipal(`logs.${region}.amazonaws.com`);
   const sourceLogGroupArn = `arn:aws:logs:${region}:${account}:log-group:*`;
 
-  bucket.addToResourcePolicy(new iam.PolicyStatement({
+  bucket.addToResourcePolicy(new PolicyStatement({
     sid: 'AllowCloudWatchLogsExportGetBucketAcl',
-    effect: iam.Effect.ALLOW,
+    effect: Effect.ALLOW,
     principals: [logsExportPrincipal],
     actions: ['s3:GetBucketAcl'],
     resources: [bucket.bucketArn],
@@ -726,9 +742,9 @@ const applyCloudWatchLogArchivePolicy = (bucket: s3.Bucket, stack: Stack): void 
     },
   }));
 
-  bucket.addToResourcePolicy(new iam.PolicyStatement({
+  bucket.addToResourcePolicy(new PolicyStatement({
     sid: 'AllowCloudWatchLogsExportPutObject',
-    effect: iam.Effect.ALLOW,
+    effect: Effect.ALLOW,
     principals: [logsExportPrincipal],
     actions: [S3_ACTION.PUT_OBJECT],
     resources: [`${bucket.bucketArn}/*`],
@@ -749,7 +765,7 @@ const applyCloudWatchLogArchivePolicy = (bucket: s3.Bucket, stack: Stack): void 
  */
 const applyBucketPolicies = (
   bucketType: S3SecureBucketType,
-  bucket: s3.Bucket,
+  bucket: Bucket,
   stack: Stack,
   accessLogDelivery?: AccessLogDeliveryScope,
 ): BucketPolicyApplyResult => {
@@ -775,15 +791,15 @@ const applyBucketPolicies = (
  * The policy resource stays in the caller's stack, so this bucket does not reference the distribution.
  */
 const addCloudFrontOriginExternalStatements = (
-  bucket: s3.Bucket,
-  policy: s3.BucketPolicy,
+  bucket: Bucket,
+  policy: BucketPolicy,
   distributionArn: string,
 ): void => {
   const bucketAndObjectArns = [bucket.bucketArn, bucket.arnForObjects('*')];
   policy.document.addStatements(
-    new iam.PolicyStatement({
-      effect: iam.Effect.DENY,
-      principals: [new iam.AnyPrincipal()],
+    new PolicyStatement({
+      effect: Effect.DENY,
+      principals: [new AnyPrincipal()],
       actions: [S3_ACTION.ALL],
       resources: bucketAndObjectArns,
       conditions: {
@@ -792,9 +808,9 @@ const addCloudFrontOriginExternalStatements = (
         },
       },
     }),
-    new iam.PolicyStatement({
-      effect: iam.Effect.DENY,
-      principals: [new iam.AnyPrincipal()],
+    new PolicyStatement({
+      effect: Effect.DENY,
+      principals: [new AnyPrincipal()],
       actions: [S3_ACTION.ALL],
       resources: bucketAndObjectArns,
       conditions: {
@@ -803,9 +819,9 @@ const addCloudFrontOriginExternalStatements = (
         },
       },
     }),
-    new iam.PolicyStatement({
-      effect: iam.Effect.ALLOW,
-      principals: [new iam.ServicePrincipal(CLOUDFRONT_SERVICE_PRINCIPAL)],
+    new PolicyStatement({
+      effect: Effect.ALLOW,
+      principals: [new ServicePrincipal(CLOUDFRONT_SERVICE_PRINCIPAL)],
       actions: [S3_ACTION.GET_OBJECT],
       resources: [bucket.arnForObjects('*')],
       conditions: {
@@ -821,14 +837,14 @@ const addCloudFrontOriginExternalStatements = (
  * Allows one CloudFront distribution to read objects through origin access control.
  */
 const grantCloudFrontOriginRead = (
-  bucket: s3.Bucket,
-  distribution: cloudfront.IDistribution,
+  bucket: Bucket,
+  distribution: IDistribution,
 ): void => {
   // SourceArn keeps the service principal limited to this distribution.
-  bucket.addToResourcePolicy(new iam.PolicyStatement({
-    effect: iam.Effect.ALLOW,
+  bucket.addToResourcePolicy(new PolicyStatement({
+    effect: Effect.ALLOW,
     principals: [
-      new iam.ServicePrincipal(CLOUDFRONT_SERVICE_PRINCIPAL),
+      new ServicePrincipal(CLOUDFRONT_SERVICE_PRINCIPAL),
     ],
     actions: [S3_ACTION.GET_OBJECT],
     resources: [bucket.arnForObjects('*')],
@@ -849,12 +865,12 @@ const grantCloudFrontOriginRead = (
  * `publicReadAccess` and `blockPublicAccess` stay at these values unless
  * {@link S3SecureBucketProps.allowInsecureOverrides} is true:
  * - `publicReadAccess`: `false`
- * - `blockPublicAccess`: {@link s3.BlockPublicAccess.BLOCK_ALL}
- * - `objectOwnership`: {@link s3.ObjectOwnership.BUCKET_OWNER_ENFORCED} unless overridden
- *   ({@link S3SecureBucketType.CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET} forces {@link s3.ObjectOwnership.OBJECT_WRITER};
+ * - `blockPublicAccess`: {@link BlockPublicAccess.BLOCK_ALL}
+ * - `objectOwnership`: {@link ObjectOwnership.BUCKET_OWNER_ENFORCED} unless overridden
+ *   ({@link S3SecureBucketType.CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET} forces {@link ObjectOwnership.OBJECT_WRITER};
  *   {@link S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET} rejects any other value)
- * - `accessControl`: {@link s3.BucketAccessControl.PRIVATE} unless overridden
- *   ({@link S3SecureBucketType.CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET} forces {@link s3.BucketAccessControl.LOG_DELIVERY_WRITE};
+ * - `accessControl`: {@link BucketAccessControl.PRIVATE} unless overridden
+ *   ({@link S3SecureBucketType.CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET} forces {@link BucketAccessControl.LOG_DELIVERY_WRITE};
  *   {@link S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET} omits `accessControl` and rejects any value)
  *
  * Defaults for every type except {@link S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET}.
@@ -871,7 +887,7 @@ const grantCloudFrontOriginRead = (
  * with `blockPublicPolicy` disabled.
  *
  * {@link S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET} uses `removalPolicy` from props
- * ({@link RemovalPolicy.RETAIN} when omitted), `enforceSSL: false` (no TLS {@link s3.BucketPolicy} in this
+ * ({@link RemovalPolicy.RETAIN} when omitted), `enforceSSL: false` (no TLS {@link BucketPolicy} in this
  * bucket's stack), and `versioned: false` (`true` is rejected). TLS and CloudFront origin statements
  * are added with {@link S3SecureBucket#addOriginPolicy}.
  * The flag can change `publicReadAccess` and `blockPublicAccess` for this type.
@@ -892,12 +908,12 @@ const grantCloudFrontOriginRead = (
  *   `S3BucketOrigin.withOriginAccessControl` adds that statement itself.
  * - {@link S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET}: S3-managed encryption.
  *   Does not create a bucket policy. {@link S3SecureBucket#addOriginPolicy} appends TLS and CloudFront
- *   `s3:GetObject` statements to a {@link s3.BucketPolicy} supplied by the caller.
+ *   `s3:GetObject` statements to a {@link BucketPolicy} supplied by the caller.
  *
  * Set {@link S3SecureBucketProps.denyUnencryptedObjectUploads} to require `x-amz-server-side-encryption` on `s3:PutObject`.
  * Service log bucket types reject that prop.
  */
-export class S3SecureBucket extends s3.Bucket {
+export class S3SecureBucket extends Bucket {
   /**
    * Preset selected at construction. Later grants use it to reject the wrong bucket type.
    */
@@ -947,7 +963,7 @@ export class S3SecureBucket extends s3.Bucket {
       ? undefined
       : legacyAcl?.accessControl
         ?? props?.accessControl
-        ?? s3.BucketAccessControl.PRIVATE;
+        ?? BucketAccessControl.PRIVATE;
     const objectEncryptionHeader = props?.denyUnencryptedObjectUploads === true
       ? resolveRequiredSseHeader(
         externalPolicyOrigin?.encryption ?? resolveEncryptionDefault(bucketType, props?.encryption),
@@ -970,10 +986,10 @@ export class S3SecureBucket extends s3.Bucket {
       objectOwnership: legacyAcl?.objectOwnership
         ?? externalPolicyOrigin?.objectOwnership
         ?? props?.objectOwnership
-        ?? s3.ObjectOwnership.BUCKET_OWNER_ENFORCED,
+        ?? ObjectOwnership.BUCKET_OWNER_ENFORCED,
     });
 
-    const cfnBucket = this.node.defaultChild as s3.CfnBucket;
+    const cfnBucket = this.node.defaultChild as CfnBucket;
     if (props?.eventBridgeEnabled === true) {
       cfnBucket.addPropertyOverride('NotificationConfiguration.EventBridgeConfiguration.EventBridgeEnabled', true);
     }
@@ -1002,7 +1018,7 @@ export class S3SecureBucket extends s3.Bucket {
    * Allows one CloudFront distribution to read objects through origin access control.
    *
    * Adds `s3:GetObject` for `cloudfront.amazonaws.com` when `AWS:SourceArn` is
-   * {@link cloudfront.IDistribution.distributionArn}. Call once per distribution.
+   * {@link IDistribution.distributionArn}. Call once per distribution.
    *
    * `S3BucketOrigin.withOriginAccessControl` adds this same statement. Do not call
    * this method for a distribution created with that helper.
@@ -1016,7 +1032,7 @@ export class S3SecureBucket extends s3.Bucket {
    * @param distribution - Distribution that fetches objects from this bucket.
    * @throws Error when `bucketType` is not {@link S3SecureBucketType.CLOUDFRONT_ORIGIN_BUCKET}.
    */
-  public grantCloudFrontRead(distribution: cloudfront.IDistribution): void {
+  public grantCloudFrontRead(distribution: IDistribution): void {
     if (this.bucketType !== S3SecureBucketType.CLOUDFRONT_ORIGIN_BUCKET) {
       throw new Error('grantCloudFrontRead is only supported when bucketType is CLOUDFRONT_ORIGIN_BUCKET');
     }
@@ -1042,7 +1058,7 @@ export class S3SecureBucket extends s3.Bucket {
    * @throws Error when `policy` is for a different bucket.
    * @throws Error when `distributionArn` is a resolved empty string.
    */
-  public addOriginPolicy(policy: s3.BucketPolicy, distributionArn: string): void {
+  public addOriginPolicy(policy: BucketPolicy, distributionArn: string): void {
     if (this.bucketType !== S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET) {
       throw new Error(ERROR.ADD_ORIGIN_POLICY_BUCKET_TYPE);
     }

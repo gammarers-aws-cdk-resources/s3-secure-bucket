@@ -917,7 +917,7 @@ public grantCloudFrontRead(distribution: IDistribution): void
 Allows one CloudFront distribution to read objects through origin access control.
 
 Adds `s3:GetObject` for `cloudfront.amazonaws.com` when `AWS:SourceArn` is
-{@link cloudfront.IDistribution.distributionArn}. Call once per distribution.
+{@link IDistribution.distributionArn}. Call once per distribution.
 
 `S3BucketOrigin.withOriginAccessControl` adds this same statement. Do not call
 this method for a distribution created with that helper.
@@ -1486,7 +1486,7 @@ with resource `AWSLogs/*`. Mutually exclusive with {@link AccessLogDeliveryScope
 
 Construction properties for {@link S3SecureBucket}.
 
-Extends {@link s3.BucketProps}. Several fields receive secure defaults inside the construct.
+Extends {@link BucketProps}. Several fields receive secure defaults inside the construct.
 `removalPolicy`, `publicReadAccess`, `blockPublicAccess`, `enforceSSL`, and `minimumTLSVersion`
 stay at those defaults unless {@link S3SecureBucketProps.allowInsecureOverrides} is true.
 
