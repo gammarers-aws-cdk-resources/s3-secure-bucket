@@ -61,6 +61,41 @@ pnpm add s3-secure-bucket
 
 ## Usage
 
+### Minimal deployable app
+
+Put this in your CDK app entry, for example `bin/app.ts`. The stack class exists only in this example. This package does not export a stack.
+
+```typescript
+import { App, Stack, type StackProps } from 'aws-cdk-lib';
+import { Construct } from 'constructs';
+import { S3SecureBucket } from 's3-secure-bucket';
+
+class S3SecureBucketStack extends Stack {
+  constructor(scope: Construct, id: string, props: StackProps) {
+    super(scope, id, props);
+
+    new S3SecureBucket(this, 'S3SecureBucket');
+  }
+}
+
+const app = new App();
+
+new S3SecureBucketStack(app, 'S3SecureBucketStack', {
+  env: {
+    account: process.env.CDK_DEFAULT_ACCOUNT,
+    region: process.env.CDK_DEFAULT_REGION,
+  },
+});
+
+app.synth();
+```
+
+Deploy checklist:
+
+1. Install this package and its peers (`aws-cdk-lib`, `constructs`) in your CDK app.
+2. Bootstrap the target account and Region (`npx cdk bootstrap`). The default bucket needs no secret or pre-created resource.
+3. From the CDK app: `npx cdk deploy S3SecureBucketStack`
+
 ### Default secure bucket
 
 ```typescript
@@ -69,9 +104,7 @@ import { S3SecureBucket } from 's3-secure-bucket';
 
 declare const stack: Stack;
 
-const bucket = new S3SecureBucket(stack, 'S3SecureBucket', {
-  bucketName: 'example-secure-bucket',
-});
+const bucket = new S3SecureBucket(stack, 'S3SecureBucket');
 ```
 
 ### CDK deployment pipeline artifact bucket
@@ -99,11 +132,11 @@ Call `grantCloudFrontRead` only when the distribution cannot update this bucket 
 
 ```typescript
 import { Stack } from 'aws-cdk-lib';
-import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
+import { type IDistribution } from 'aws-cdk-lib/aws-cloudfront';
 import { S3SecureBucket, S3SecureBucketType } from 's3-secure-bucket';
 
 declare const stack: Stack;
-declare const distribution: cloudfront.IDistribution;
+declare const distribution: IDistribution;
 
 const originBucket = new S3SecureBucket(stack, 'OriginBucket', {
   bucketType: S3SecureBucketType.CLOUDFRONT_ORIGIN_BUCKET,
@@ -120,7 +153,7 @@ Create the `BucketPolicy` yourself and pass the distribution ARN as a string. As
 
 ```typescript
 import { Stack } from 'aws-cdk-lib';
-import * as s3 from 'aws-cdk-lib/aws-s3';
+import { BucketPolicy } from 'aws-cdk-lib/aws-s3';
 import { S3SecureBucket, S3SecureBucketType } from 's3-secure-bucket';
 
 declare const storageStack: Stack;
@@ -131,7 +164,7 @@ const originBucket = new S3SecureBucket(storageStack, 'OriginBucket', {
   bucketType: S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET,
 });
 
-const originPolicy = new s3.BucketPolicy(associateStack, 'OriginBucketPolicy', {
+const originPolicy = new BucketPolicy(associateStack, 'OriginBucketPolicy', {
   bucket: originBucket,
 });
 
@@ -185,21 +218,21 @@ Wire logging on the load balancer using your normal approach (for example L1 att
 
 ### CloudFront standard logging (legacy) bucket
 
-Pass the bucket to `cloudfront.Distribution` as `logBucket`, and set `logFilePrefix` to your own prefix (for example `hostname/original-log/`). Keys are **not** under `AWSLogs/<account>/*`. Delivery uses the `LogDeliveryWrite` ACL; this type does not add the `ACCESS_LOG_BUCKET` resource policy.
+Pass the bucket to `Distribution` as `logBucket`, and set `logFilePrefix` to your own prefix (for example `hostname/original-log/`). Keys are **not** under `AWSLogs/<account>/*`. Delivery uses the `LogDeliveryWrite` ACL; this type does not add the `ACCESS_LOG_BUCKET` resource policy.
 
 ```typescript
 import { Stack } from 'aws-cdk-lib';
-import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
+import { Distribution, type IOrigin } from 'aws-cdk-lib/aws-cloudfront';
 import { S3SecureBucket, S3SecureBucketType } from 's3-secure-bucket';
 
 declare const stack: Stack;
-declare const origin: cloudfront.IOrigin;
+declare const origin: IOrigin;
 
 const cloudFrontLegacyLogBucket = new S3SecureBucket(stack, 'CloudFrontLegacyLogBucket', {
   bucketType: S3SecureBucketType.CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET,
 });
 
-new cloudfront.Distribution(stack, 'Distribution', {
+new Distribution(stack, 'Distribution', {
   defaultBehavior: { origin },
   logBucket: cloudFrontLegacyLogBucket,
   logFilePrefix: 'hostname/original-log/',
