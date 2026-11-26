@@ -1,6 +1,6 @@
 import { App, Stack } from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
-import * as s3 from 'aws-cdk-lib/aws-s3';
+import { Bucket } from 'aws-cdk-lib/aws-s3';
 import { S3SecureBucket, S3SecureBucketType } from '../src';
 
 describe('S3SecureBucket bucketType=CLOUDFRONT_ORIGIN_BUCKET Testing', () => {
@@ -13,7 +13,7 @@ describe('S3SecureBucket bucketType=CLOUDFRONT_ORIGIN_BUCKET Testing', () => {
   });
 
   it('Is Bucket', () => {
-    expect(bucket).toBeInstanceOf(s3.Bucket);
+    expect(bucket).toBeInstanceOf(Bucket);
   });
 
   it('does not expose accessLogBucketPolicyDependable', () => {

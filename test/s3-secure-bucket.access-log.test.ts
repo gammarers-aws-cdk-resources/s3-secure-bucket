@@ -1,6 +1,6 @@
 import { App, Aws, Stack, Token } from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
-import * as s3 from 'aws-cdk-lib/aws-s3';
+import { Bucket } from 'aws-cdk-lib/aws-s3';
 import { RegionInfo } from 'aws-cdk-lib/region-info';
 import { S3SecureBucket, S3SecureBucketType } from '../src';
 
@@ -36,7 +36,7 @@ describe('S3SecureBucket bucketType=ACCESS_LOG_BUCKET (us-east-1)', () => {
   });
 
   it('Is Bucket', () => {
-    expect(bucket).toBeInstanceOf(s3.Bucket);
+    expect(bucket).toBeInstanceOf(Bucket);
   });
 
   it('exposes accessLogBucketPolicyDependable for ALB DependsOn wiring', () => {
@@ -380,7 +380,7 @@ describe('S3SecureBucket bucketType=ACCESS_LOG_BUCKET accessLogDelivery', () => 
       accessLogDelivery: {
         allowedSourceAccountIds: ['not-an-account'],
       },
-    })).toThrow('allowedSourceAccountIds contains an invalid AWS account ID: not-an-account');
+    })).toThrow('allowedSourceAccountIds contains an invalid AWS account ID');
   });
 
   it('throws when organizationId is invalid', () => {
@@ -396,7 +396,7 @@ describe('S3SecureBucket bucketType=ACCESS_LOG_BUCKET accessLogDelivery', () => 
       accessLogDelivery: {
         organizationId: 'not-an-org',
       },
-    })).toThrow('organizationId must be an AWS Organizations ID (o-...), got: not-an-org');
+    })).toThrow('organizationId must be an AWS Organizations ID (o-...)');
   });
 
   it('skips account ID format checks for unresolved tokens', () => {

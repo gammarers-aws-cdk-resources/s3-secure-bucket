@@ -22,7 +22,7 @@ new S3SecureBucket(scope: Construct, id: string, props?: S3SecureBucketProps)
 | --- | --- | --- |
 | <code><a href="#s3-secure-bucket.S3SecureBucket.Initializer.parameter.scope">scope</a></code> | <code>constructs.Construct</code> | - Parent construct, typically a {@link Stack}. |
 | <code><a href="#s3-secure-bucket.S3SecureBucket.Initializer.parameter.id">id</a></code> | <code>string</code> | - Construct ID (stable logical ID segment). |
-| <code><a href="#s3-secure-bucket.S3SecureBucket.Initializer.parameter.props">props</a></code> | <code><a href="#s3-secure-bucket.S3SecureBucketProps">S3SecureBucketProps</a></code> | - Optional {@link S3SecureBucketProps}; |
+| <code><a href="#s3-secure-bucket.S3SecureBucket.Initializer.parameter.props">props</a></code> | <code><a href="#s3-secure-bucket.S3SecureBucketProps">S3SecureBucketProps</a></code> | - Optional {@link S3SecureBucketProps}. |
 
 ---
 
@@ -46,9 +46,11 @@ Construct ID (stable logical ID segment).
 
 - *Type:* <a href="#s3-secure-bucket.S3SecureBucketProps">S3SecureBucketProps</a>
 
-Optional {@link S3SecureBucketProps};
+Optional {@link S3SecureBucketProps}.
 
-secure defaults override several {@link s3.BucketProps} fields.
+Secure defaults override `removalPolicy`,
+`publicReadAccess`, `blockPublicAccess`, `enforceSSL`, and `minimumTLSVersion` unless
+{@link S3SecureBucketProps.allowInsecureOverrides} is true.
 When `eventBridgeEnabled` is `true`, EventBridge notification is enabled via an L1 property override.
 
 ---
@@ -915,7 +917,7 @@ public grantCloudFrontRead(distribution: IDistribution): void
 Allows one CloudFront distribution to read objects through origin access control.
 
 Adds `s3:GetObject` for `cloudfront.amazonaws.com` when `AWS:SourceArn` is
-{@link cloudfront.IDistribution.distributionArn}. Call once per distribution.
+{@link IDistribution.distributionArn}. Call once per distribution.
 
 `S3BucketOrigin.withOriginAccessControl` adds this same statement. Do not call
 this method for a distribution created with that helper.
@@ -1484,8 +1486,9 @@ with resource `AWSLogs/*`. Mutually exclusive with {@link AccessLogDeliveryScope
 
 Construction properties for {@link S3SecureBucket}.
 
-Extends {@link s3.BucketProps}. Several fields receive secure defaults inside the construct
-and may be overridden unless documented otherwise on {@link S3SecureBucket}.
+Extends {@link BucketProps}. Several fields receive secure defaults inside the construct.
+`removalPolicy`, `publicReadAccess`, `blockPublicAccess`, `enforceSSL`, and `minimumTLSVersion`
+stay at those defaults unless {@link S3SecureBucketProps.allowInsecureOverrides} is true.
 
 #### Initializer <a name="Initializer" id="s3-secure-bucket.S3SecureBucketProps.Initializer"></a>
 
@@ -1534,6 +1537,7 @@ const s3SecureBucketProps: S3SecureBucketProps = { ... }
 | <code><a href="#s3-secure-bucket.S3SecureBucketProps.property.websiteRedirect">websiteRedirect</a></code> | <code>aws-cdk-lib.aws_s3.RedirectTarget</code> | Specifies the redirect behavior of all requests to a website endpoint of a bucket. |
 | <code><a href="#s3-secure-bucket.S3SecureBucketProps.property.websiteRoutingRules">websiteRoutingRules</a></code> | <code>aws-cdk-lib.aws_s3.RoutingRule[]</code> | Rules that define when a redirect is applied and the redirect behavior. |
 | <code><a href="#s3-secure-bucket.S3SecureBucketProps.property.accessLogDelivery">accessLogDelivery</a></code> | <code><a href="#s3-secure-bucket.AccessLogDeliveryScope">AccessLogDeliveryScope</a></code> | Account or organization scope for {@link S3SecureBucketType.ACCESS_LOG_BUCKET} writers. |
+| <code><a href="#s3-secure-bucket.S3SecureBucketProps.property.allowInsecureOverrides">allowInsecureOverrides</a></code> | <code>boolean</code> | Uses `removalPolicy`, `publicReadAccess`, `blockPublicAccess`, `enforceSSL`, and `minimumTLSVersion` from props. Omitted fields keep the secure defaults. |
 | <code><a href="#s3-secure-bucket.S3SecureBucketProps.property.bucketType">bucketType</a></code> | <code>string</code> | Selects encryption defaults and optional resource-policy or ACL settings. |
 | <code><a href="#s3-secure-bucket.S3SecureBucketProps.property.denyUnencryptedObjectUploads">denyUnencryptedObjectUploads</a></code> | <code>boolean</code> | Denies `s3:PutObject` unless the request sends `x-amz-server-side-encryption` for this bucket's algorithm (`AES256`, `aws:kms`, or `aws:kms:dsse`). |
 
@@ -2066,6 +2070,28 @@ may deliver logs (`AWSLogs/<stack account>/*`).
 
 Supported only when {@link S3SecureBucketProps.bucketType} is
 {@link S3SecureBucketType.ACCESS_LOG_BUCKET}.
+
+---
+
+##### `allowInsecureOverrides`<sup>Optional</sup> <a name="allowInsecureOverrides" id="s3-secure-bucket.S3SecureBucketProps.property.allowInsecureOverrides"></a>
+
+```typescript
+public readonly allowInsecureOverrides: boolean;
+```
+
+- *Type:* boolean
+- *Default:* false
+
+Uses `removalPolicy`, `publicReadAccess`, `blockPublicAccess`, `enforceSSL`, and `minimumTLSVersion` from props. Omitted fields keep the secure defaults.
+
+`publicReadAccess: true` adds an `s3:GetObject` allow for every principal.
+Pair it with a `blockPublicAccess` value that leaves `blockPublicPolicy` disabled, or construction fails.
+Setting `minimumTLSVersion` while `enforceSSL` is false fails at construction.
+
+{@link S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET} still forces `enforceSSL` off
+and omits `minimumTLSVersion`. Setting either while this flag is true fails at construction.
+`publicReadAccess` and `blockPublicAccess` follow props for that type.
+`publicReadAccess: true` adds a bucket policy in the bucket's stack.
 
 ---
 

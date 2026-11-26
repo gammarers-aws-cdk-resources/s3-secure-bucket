@@ -23,7 +23,6 @@ exports[`S3SecureBucket bucketType=DEPLOYMENT_PIPELINE_ARTIFACT_BUCKET Testing S
             },
           ],
         },
-        "BucketName": "example-secure-bucket",
         "OwnershipControls": {
           "Rules": [
             {
@@ -120,7 +119,11 @@ exports[`S3SecureBucket bucketType=DEPLOYMENT_PIPELINE_ARTIFACT_BUCKET Testing S
               ],
             },
             {
-              "Action": "s3:*",
+              "Action": [
+                "s3:ListBucket",
+                "s3:GetBucketVersioning",
+                "s3:GetBucketLocation",
+              ],
               "Effect": "Allow",
               "Principal": {
                 "AWS": {
@@ -143,28 +146,57 @@ exports[`S3SecureBucket bucketType=DEPLOYMENT_PIPELINE_ARTIFACT_BUCKET Testing S
                   ],
                 },
               },
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "S3SecureBucket424F941E",
-                    "Arn",
-                  ],
-                },
-                {
+              "Resource": {
+                "Fn::GetAtt": [
+                  "S3SecureBucket424F941E",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "s3:GetObject",
+                "s3:GetObjectVersion",
+                "s3:PutObject",
+                "s3:DeleteObject",
+                "s3:AbortMultipartUpload",
+              ],
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": {
                   "Fn::Join": [
                     "",
                     [
+                      "arn:aws:iam::",
                       {
-                        "Fn::GetAtt": [
-                          "S3SecureBucket424F941E",
-                          "Arn",
-                        ],
+                        "Ref": "AWS::AccountId",
                       },
-                      "/*",
+                      ":role/cdk-custom9uo-deploy-role-",
+                      {
+                        "Ref": "AWS::AccountId",
+                      },
+                      "-",
+                      {
+                        "Ref": "AWS::Region",
+                      },
                     ],
                   ],
                 },
-              ],
+              },
+              "Resource": {
+                "Fn::Join": [
+                  "",
+                  [
+                    {
+                      "Fn::GetAtt": [
+                        "S3SecureBucket424F941E",
+                        "Arn",
+                      ],
+                    },
+                    "/*",
+                  ],
+                ],
+              },
             },
           ],
           "Version": "2012-10-17",

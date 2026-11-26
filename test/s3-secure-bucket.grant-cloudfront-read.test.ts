@@ -1,14 +1,14 @@
 import { App, Stack } from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
-import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
+import { Distribution, type IDistribution } from 'aws-cdk-lib/aws-cloudfront';
 import { S3SecureBucket, S3SecureBucketType } from '../src';
 
 const DISTRIBUTION_ID = 'EDFDVBD6EXAMPLE';
 const DISTRIBUTION_DOMAIN_NAME = 'd111111abcdef8.cloudfront.net';
 
 describe('S3SecureBucket.grantCloudFrontRead', () => {
-  const createDistribution = (stack: Stack): cloudfront.IDistribution => {
-    return cloudfront.Distribution.fromDistributionAttributes(stack, 'Distribution', {
+  const createDistribution = (stack: Stack): IDistribution => {
+    return Distribution.fromDistributionAttributes(stack, 'Distribution', {
       distributionId: DISTRIBUTION_ID,
       domainName: DISTRIBUTION_DOMAIN_NAME,
     });
