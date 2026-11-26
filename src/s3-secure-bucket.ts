@@ -323,8 +323,14 @@ interface BucketPolicyApplyResult {
   readonly accessLogBucketPolicyDependable?: IDependable;
 }
 
+/**
+ * Returns whether the value is a 12-digit AWS account ID.
+ */
 const isAwsAccountId = (value: string): boolean => /^\d{12}$/.test(value);
 
+/**
+ * Returns whether the value is an AWS Organizations ID (`o-` followed by 10 to 32 lowercase letters or digits).
+ */
 const isAwsOrganizationId = (value: string): boolean => /^o-[a-z0-9]{10,32}$/.test(value);
 
 /**
@@ -412,6 +418,10 @@ const unencryptedObjectUploadDenies = (
   ];
 };
 
+/**
+ * Appends the encryption-header deny statements to the supplied policy.
+ * When no policy is supplied, appends them to the bucket resource policy.
+ */
 const addUnencryptedObjectUploadDenies = (
   bucket: Bucket,
   sseHeader: string,
@@ -535,6 +545,10 @@ const resolveSecureAccess = (
   };
 };
 
+/**
+ * Accepts an unresolved token or a 12-digit account ID.
+ * Throws when a resolved value is not an account ID.
+ */
 const assertAccountId = (accountId: string): void => {
   if (Token.isUnresolved(accountId)) {
     return;
@@ -545,6 +559,10 @@ const assertAccountId = (accountId: string): void => {
   throw new Error('allowedSourceAccountIds contains an invalid AWS account ID');
 };
 
+/**
+ * Accepts an Organizations ID and returns `AWSLogs/*` plus that ID.
+ * Throws when a resolved ID is not `o-...`.
+ */
 const resolveOrganizationDelivery = (
   bucketArn: string,
   organizationId: string,
@@ -558,6 +576,10 @@ const resolveOrganizationDelivery = (
   };
 };
 
+/**
+ * Deduplicates account IDs and returns one `AWSLogs/<account>/*` resource per account.
+ * Throws when the list is empty or a resolved ID is invalid.
+ */
 const resolveAccountListDelivery = (
   bucketArn: string,
   accountIds: readonly string[],
