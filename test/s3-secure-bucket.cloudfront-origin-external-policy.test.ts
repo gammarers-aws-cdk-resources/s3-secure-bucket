@@ -1,8 +1,14 @@
 import { App, Duration, RemovalPolicy, Stack } from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
-import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
-import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
-import * as s3 from 'aws-cdk-lib/aws-s3';
+import { Distribution } from 'aws-cdk-lib/aws-cloudfront';
+import { HttpOrigin } from 'aws-cdk-lib/aws-cloudfront-origins';
+import {
+  Bucket,
+  BucketAccessControl,
+  BucketEncryption,
+  BucketPolicy,
+  ObjectOwnership,
+} from 'aws-cdk-lib/aws-s3';
 import { S3SecureBucket, S3SecureBucketType } from '../src';
 
 const ACCOUNT = '123456789012';
@@ -38,7 +44,7 @@ describe('S3SecureBucket bucketType=CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET', (
   const template = Template.fromStack(stack);
 
   it('Is Bucket', () => {
-    expect(bucket).toBeInstanceOf(s3.Bucket);
+    expect(bucket).toBeInstanceOf(Bucket);
   });
 
   it('does not expose accessLogBucketPolicyDependable', () => {
@@ -93,8 +99,8 @@ describe('S3SecureBucket bucketType=CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET pro
     const stack = new Stack(new App(), 'TestingStack');
     expect(() => {
       createExternalPolicyBucket(stack, 'OriginBucket', {
-        encryption: s3.BucketEncryption.S3_MANAGED,
-        objectOwnership: s3.ObjectOwnership.BUCKET_OWNER_ENFORCED,
+        encryption: BucketEncryption.S3_MANAGED,
+        objectOwnership: ObjectOwnership.BUCKET_OWNER_ENFORCED,
         versioned: false,
       });
     }).not.toThrow();
@@ -115,7 +121,7 @@ describe('S3SecureBucket bucketType=CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET pro
     const stack = new Stack(new App(), 'TestingStack');
     expect(() => {
       createExternalPolicyBucket(stack, 'OriginBucket', {
-        encryption: s3.BucketEncryption.KMS_MANAGED,
+        encryption: BucketEncryption.KMS_MANAGED,
       });
     }).toThrow('CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET requires encryption S3_MANAGED');
   });
@@ -124,14 +130,14 @@ describe('S3SecureBucket bucketType=CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET pro
     const stack = new Stack(new App(), 'TestingStack');
     expect(() => {
       createExternalPolicyBucket(stack, 'OriginBucket', {
-        objectOwnership: s3.ObjectOwnership.OBJECT_WRITER,
+        objectOwnership: ObjectOwnership.OBJECT_WRITER,
       });
     }).toThrow('CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET requires objectOwnership BUCKET_OWNER_ENFORCED');
   });
 
   it.each([
-    s3.BucketAccessControl.PRIVATE,
-    s3.BucketAccessControl.LOG_DELIVERY_WRITE,
+    BucketAccessControl.PRIVATE,
+    BucketAccessControl.LOG_DELIVERY_WRITE,
   ])('rejects accessControl %s', (accessControl) => {
     const stack = new Stack(new App(), 'TestingStack');
     expect(() => {
@@ -227,12 +233,12 @@ describe('S3SecureBucket.addOriginPolicy', () => {
       crossRegionReferences: true,
     });
     const bucket = createExternalPolicyBucket(storage);
-    const distribution = new cloudfront.Distribution(ingress, 'Distribution', {
+    const distribution = new Distribution(ingress, 'Distribution', {
       defaultBehavior: {
-        origin: new origins.HttpOrigin('example.com'),
+        origin: new HttpOrigin('example.com'),
       },
     });
-    const policy = new s3.BucketPolicy(associate, 'OriginBucketPolicy', { bucket });
+    const policy = new BucketPolicy(associate, 'OriginBucketPolicy', { bucket });
 
     bucket.addOriginPolicy(policy, distribution.distributionArn);
 
@@ -268,7 +274,7 @@ describe('S3SecureBucket.addOriginPolicy', () => {
       env: { account: ACCOUNT, region: 'ap-northeast-1' },
     });
     const bucket = createExternalPolicyBucket(storage);
-    const policy = new s3.BucketPolicy(associate, 'OriginBucketPolicy', { bucket });
+    const policy = new BucketPolicy(associate, 'OriginBucketPolicy', { bucket });
 
     bucket.addOriginPolicy(policy, DISTRIBUTION_ARN);
 
@@ -300,8 +306,8 @@ describe('S3SecureBucket.addOriginPolicy', () => {
     const bucket = new S3SecureBucket(stack, 'OriginBucket', {
       bucketType: S3SecureBucketType.CLOUDFRONT_ORIGIN_BUCKET,
     });
-    const other = new s3.Bucket(stack, 'OtherBucket');
-    const policy = new s3.BucketPolicy(stack, 'OtherPolicy', { bucket: other });
+    const other = new Bucket(stack, 'OtherBucket');
+    const policy = new BucketPolicy(stack, 'OtherPolicy', { bucket: other });
 
     expect(() => {
       bucket.addOriginPolicy(policy, DISTRIBUTION_ARN);
@@ -311,8 +317,8 @@ describe('S3SecureBucket.addOriginPolicy', () => {
   it('rejects a BucketPolicy for a different bucket', () => {
     const stack = new Stack(new App(), 'TestingStack');
     const bucket = createExternalPolicyBucket(stack);
-    const other = new s3.Bucket(stack, 'OtherBucket');
-    const policy = new s3.BucketPolicy(stack, 'OtherPolicy', { bucket: other });
+    const other = new Bucket(stack, 'OtherBucket');
+    const policy = new BucketPolicy(stack, 'OtherPolicy', { bucket: other });
 
     expect(() => {
       bucket.addOriginPolicy(policy, DISTRIBUTION_ARN);
@@ -322,7 +328,7 @@ describe('S3SecureBucket.addOriginPolicy', () => {
   it('rejects a resolved empty distribution ARN', () => {
     const stack = new Stack(new App(), 'TestingStack');
     const bucket = createExternalPolicyBucket(stack);
-    const policy = new s3.BucketPolicy(stack, 'OriginBucketPolicy', { bucket });
+    const policy = new BucketPolicy(stack, 'OriginBucketPolicy', { bucket });
 
     expect(() => {
       bucket.addOriginPolicy(policy, '');

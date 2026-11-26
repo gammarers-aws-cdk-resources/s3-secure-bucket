@@ -1,6 +1,6 @@
 import { App, DefaultStackSynthesizer, Stack } from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
-import * as s3 from 'aws-cdk-lib/aws-s3';
+import { Bucket } from 'aws-cdk-lib/aws-s3';
 import { S3SecureBucket, S3SecureBucketType } from '../src';
 
 describe('S3SecureBucket bucketType=DEPLOYMENT_PIPELINE_ARTIFACT_BUCKET Testing', () => {
@@ -14,12 +14,11 @@ describe('S3SecureBucket bucketType=DEPLOYMENT_PIPELINE_ARTIFACT_BUCKET Testing'
   });
 
   const bucket = new S3SecureBucket(stack, 'S3SecureBucket', {
-    bucketName: 'example-secure-bucket',
     bucketType: S3SecureBucketType.DEPLOYMENT_PIPELINE_ARTIFACT_BUCKET,
   });
 
   it('Is Bucket', () => {
-    expect(bucket).toBeInstanceOf(s3.Bucket);
+    expect(bucket).toBeInstanceOf(Bucket);
   });
 
   it('does not expose accessLogBucketPolicyDependable', () => {

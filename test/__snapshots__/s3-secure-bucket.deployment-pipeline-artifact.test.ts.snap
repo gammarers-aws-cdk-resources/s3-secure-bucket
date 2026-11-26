@@ -23,7 +23,6 @@ exports[`S3SecureBucket bucketType=DEPLOYMENT_PIPELINE_ARTIFACT_BUCKET Testing S
             },
           ],
         },
-        "BucketName": "example-secure-bucket",
         "OwnershipControls": {
           "Rules": [
             {

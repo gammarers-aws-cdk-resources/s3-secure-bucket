@@ -1,6 +1,6 @@
 import { App, Stack } from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
-import * as s3 from 'aws-cdk-lib/aws-s3';
+import { BucketEncryption, BucketPolicy } from 'aws-cdk-lib/aws-s3';
 import { S3SecureBucket, S3SecureBucketType } from '../src';
 
 const UNSUPPORTED_ERROR =
@@ -49,11 +49,11 @@ describe('S3SecureBucket denyUnencryptedObjectUploads', () => {
 
   it.each([
     [undefined, 'aws:kms'],
-    [s3.BucketEncryption.KMS_MANAGED, 'aws:kms'],
-    [s3.BucketEncryption.KMS, 'aws:kms'],
-    [s3.BucketEncryption.S3_MANAGED, 'AES256'],
-    [s3.BucketEncryption.DSSE_MANAGED, 'aws:kms:dsse'],
-    [s3.BucketEncryption.DSSE, 'aws:kms:dsse'],
+    [BucketEncryption.KMS_MANAGED, 'aws:kms'],
+    [BucketEncryption.KMS, 'aws:kms'],
+    [BucketEncryption.S3_MANAGED, 'AES256'],
+    [BucketEncryption.DSSE_MANAGED, 'aws:kms:dsse'],
+    [BucketEncryption.DSSE, 'aws:kms:dsse'],
   ] as const)('requires the %s header %s', (encryption, sseHeader) => {
     const stack = new Stack(new App(), 'TestingStack');
     new S3SecureBucket(stack, 'Bucket', {
@@ -93,7 +93,7 @@ describe('S3SecureBucket denyUnencryptedObjectUploads', () => {
       bucketType: S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET,
       denyUnencryptedObjectUploads: true,
     });
-    const policy = new s3.BucketPolicy(associate, 'OriginBucketPolicy', { bucket });
+    const policy = new BucketPolicy(associate, 'OriginBucketPolicy', { bucket });
 
     bucket.addOriginPolicy(policy, 'arn:aws:cloudfront::123456789012:distribution/EDFDVBD6EXAMPLE');
 

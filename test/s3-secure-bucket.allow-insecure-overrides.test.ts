@@ -1,6 +1,6 @@
 import { App, RemovalPolicy, Stack } from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
-import * as s3 from 'aws-cdk-lib/aws-s3';
+import { BlockPublicAccess } from 'aws-cdk-lib/aws-s3';
 import { S3SecureBucket, S3SecureBucketType, type S3SecureBucketProps } from '../src';
 
 const blockPublicAll = {
@@ -75,7 +75,7 @@ describe('S3SecureBucket allowInsecureOverrides', () => {
   it('applies blockPublicAccess from props', () => {
     const template = synthesize({
       allowInsecureOverrides: true,
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ACLS_ONLY,
+      blockPublicAccess: BlockPublicAccess.BLOCK_ACLS_ONLY,
     });
 
     template.hasResourceProperties('AWS::S3::Bucket', {
@@ -88,7 +88,7 @@ describe('S3SecureBucket allowInsecureOverrides', () => {
     const template = synthesize({
       allowInsecureOverrides: true,
       publicReadAccess: true,
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ACLS_ONLY,
+      blockPublicAccess: BlockPublicAccess.BLOCK_ACLS_ONLY,
     });
 
     template.hasResourceProperties('AWS::S3::BucketPolicy', {
@@ -164,7 +164,7 @@ describe('S3SecureBucket allowInsecureOverrides', () => {
     const template = synthesize({
       allowInsecureOverrides: true,
       bucketType: S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET,
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ACLS_ONLY,
+      blockPublicAccess: BlockPublicAccess.BLOCK_ACLS_ONLY,
     });
 
     template.resourceCountIs('AWS::S3::BucketPolicy', 0);
@@ -178,7 +178,7 @@ describe('S3SecureBucket allowInsecureOverrides', () => {
       allowInsecureOverrides: true,
       bucketType: S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET,
       publicReadAccess: true,
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ACLS_ONLY,
+      blockPublicAccess: BlockPublicAccess.BLOCK_ACLS_ONLY,
     });
 
     template.hasResourceProperties('AWS::S3::BucketPolicy', {

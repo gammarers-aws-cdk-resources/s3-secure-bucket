@@ -1,7 +1,12 @@
 import { App, Stack } from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
-import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
-import * as s3 from 'aws-cdk-lib/aws-s3';
+import { Distribution } from 'aws-cdk-lib/aws-cloudfront';
+import {
+  Bucket,
+  BucketAccessControl,
+  BucketEncryption,
+  ObjectOwnership,
+} from 'aws-cdk-lib/aws-s3';
 import { S3SecureBucket, S3SecureBucketType } from '../src';
 
 describe('S3SecureBucket bucketType=CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET Testing', () => {
@@ -18,7 +23,7 @@ describe('S3SecureBucket bucketType=CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET Testing'
   });
 
   it('Is Bucket', () => {
-    expect(bucket).toBeInstanceOf(s3.Bucket);
+    expect(bucket).toBeInstanceOf(Bucket);
   });
 
   it('does not expose accessLogBucketPolicyDependable', () => {
@@ -122,7 +127,7 @@ describe('S3SecureBucket bucketType=CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET override
     const stack = new Stack(new App(), 'TestingStack');
     new S3SecureBucket(stack, 'S3SecureBucket', {
       bucketType: S3SecureBucketType.CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET,
-      encryption: s3.BucketEncryption.KMS_MANAGED,
+      encryption: BucketEncryption.KMS_MANAGED,
     });
 
     const template = Template.fromStack(stack);
@@ -158,8 +163,8 @@ describe('S3SecureBucket bucketType=CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET override
     expect(() => {
       new S3SecureBucket(stack, 'S3SecureBucket', {
         bucketType: S3SecureBucketType.CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET,
-        accessControl: s3.BucketAccessControl.LOG_DELIVERY_WRITE,
-        objectOwnership: s3.ObjectOwnership.OBJECT_WRITER,
+        accessControl: BucketAccessControl.LOG_DELIVERY_WRITE,
+        objectOwnership: ObjectOwnership.OBJECT_WRITER,
       });
     }).not.toThrow();
   });
@@ -169,7 +174,7 @@ describe('S3SecureBucket bucketType=CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET override
     expect(() => {
       new S3SecureBucket(stack, 'S3SecureBucket', {
         bucketType: S3SecureBucketType.CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET,
-        accessControl: s3.BucketAccessControl.PRIVATE,
+        accessControl: BucketAccessControl.PRIVATE,
       });
     }).toThrow(
       'CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET requires accessControl LOG_DELIVERY_WRITE and objectOwnership OBJECT_WRITER for legacy CloudFront access logging',
@@ -181,7 +186,7 @@ describe('S3SecureBucket bucketType=CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET override
     expect(() => {
       new S3SecureBucket(stack, 'S3SecureBucket', {
         bucketType: S3SecureBucketType.CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET,
-        objectOwnership: s3.ObjectOwnership.BUCKET_OWNER_ENFORCED,
+        objectOwnership: ObjectOwnership.BUCKET_OWNER_ENFORCED,
       });
     }).toThrow(
       'CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET requires accessControl LOG_DELIVERY_WRITE and objectOwnership OBJECT_WRITER for legacy CloudFront access logging',
@@ -198,7 +203,7 @@ describe('S3SecureBucket bucketType=CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET override
     const bucket = new S3SecureBucket(stack, 'S3SecureBucket', {
       bucketType: S3SecureBucketType.CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET,
     });
-    const distribution = cloudfront.Distribution.fromDistributionAttributes(stack, 'Distribution', {
+    const distribution = Distribution.fromDistributionAttributes(stack, 'Distribution', {
       distributionId: 'EDFDVBD6EXAMPLE',
       domainName: 'd111111abcdef8.cloudfront.net',
     });
