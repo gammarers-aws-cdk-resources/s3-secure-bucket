@@ -69,8 +69,9 @@ export const S3SecureBucketType = {
    * CloudFront origin whose bucket policy is created in another stack.
    *
    * Uses S3-managed encryption ({@link s3.BucketEncryption.S3_MANAGED}).
-   * Does not create {@link s3.BucketPolicy} here: `enforceSSL` is false, versioning is off,
+   * Does not create a TLS {@link s3.BucketPolicy} here: `enforceSSL` is false, versioning is off,
    * and `removalPolicy` follows props ({@link RemovalPolicy.RETAIN} when omitted).
+   * {@link S3SecureBucketProps.allowInsecureOverrides} can set `publicReadAccess`, which adds a bucket policy.
    * Omits `accessControl` and rejects any value. `objectOwnership` stays
    * {@link s3.ObjectOwnership.BUCKET_OWNER_ENFORCED}.
    * {@link S3SecureBucket#addOriginPolicy} appends statements to a policy the caller owns.
@@ -129,8 +130,9 @@ export type S3SecureBucketType = typeof S3SecureBucketType[keyof typeof S3Secure
 /**
  * Construction properties for {@link S3SecureBucket}.
  *
- * Extends {@link s3.BucketProps}. Several fields receive secure defaults inside the construct
- * and may be overridden unless documented otherwise on {@link S3SecureBucket}.
+ * Extends {@link s3.BucketProps}. Several fields receive secure defaults inside the construct.
+ * `removalPolicy`, `publicReadAccess`, `blockPublicAccess`, `enforceSSL`, and `minimumTLSVersion`
+ * stay at those defaults unless {@link S3SecureBucketProps.allowInsecureOverrides} is true.
  */
 export interface S3SecureBucketProps extends s3.BucketProps {
   /**
@@ -172,6 +174,23 @@ export interface S3SecureBucketProps extends s3.BucketProps {
    * @default false
    */
   readonly denyUnencryptedObjectUploads?: boolean;
+
+  /**
+   * Uses `removalPolicy`, `publicReadAccess`, `blockPublicAccess`, `enforceSSL`, and `minimumTLSVersion` from props.
+   * Omitted fields keep the secure defaults.
+   *
+   * `publicReadAccess: true` adds an `s3:GetObject` allow for every principal.
+   * Pair it with a `blockPublicAccess` value that leaves `blockPublicPolicy` disabled, or construction fails.
+   * Setting `minimumTLSVersion` while `enforceSSL` is false fails at construction.
+   *
+   * {@link S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET} still forces `enforceSSL` off
+   * and omits `minimumTLSVersion`. Setting either while this flag is true fails at construction.
+   * `publicReadAccess` and `blockPublicAccess` follow props for that type.
+   * `publicReadAccess: true` adds a bucket policy in the bucket's stack.
+   *
+   * @default false
+   */
+  readonly allowInsecureOverrides?: boolean;
 }
 
 const CLOUDFRONT_SERVICE_PRINCIPAL = 'cloudfront.amazonaws.com';
@@ -204,6 +223,10 @@ const EXTERNAL_POLICY_ACCESS_CONTROL_ERROR =
   'CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET does not accept accessControl';
 const EXTERNAL_POLICY_VERSIONED_ERROR =
   'CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET requires versioned false';
+const EXTERNAL_POLICY_SSL_OVERRIDE_ERROR =
+  'CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET does not accept enforceSSL or minimumTLSVersion';
+const MINIMUM_TLS_VERSION_REQUIRES_ENFORCE_SSL_ERROR =
+  'minimumTLSVersion requires enforceSSL';
 const ADD_ORIGIN_POLICY_BUCKET_TYPE_ERROR =
   'addOriginPolicy is only supported when bucketType is CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET';
 const ADD_ORIGIN_POLICY_BUCKET_MISMATCH_ERROR =
@@ -224,6 +247,14 @@ interface CloudFrontOriginExternalPolicyDefaults {
   readonly objectOwnership: s3.ObjectOwnership;
   readonly versioned: boolean;
   readonly removalPolicy: RemovalPolicy;
+}
+
+interface SecureAccessDefaults {
+  readonly removalPolicy: RemovalPolicy;
+  readonly publicReadAccess: boolean;
+  readonly blockPublicAccess: s3.BlockPublicAccess;
+  readonly enforceSSL: boolean;
+  readonly minimumTLSVersion?: number;
 }
 
 interface ResolvedAccessLogDelivery {
@@ -389,6 +420,61 @@ const resolveCloudFrontOriginExternalPolicy = (
     objectOwnership: REQUIRED_EXTERNAL_POLICY_OBJECT_OWNERSHIP,
     versioned: false,
     removalPolicy: props?.removalPolicy ?? RemovalPolicy.RETAIN,
+  };
+};
+
+/**
+ * Resolves access settings that stay at secure defaults unless `allowInsecureOverrides` is set.
+ * Omitted fields keep those defaults. The external-policy type still creates no TLS bucket policy.
+ */
+const resolveSecureAccess = (
+  props: S3SecureBucketProps | undefined,
+  externalPolicyOrigin: CloudFrontOriginExternalPolicyDefaults | undefined,
+): SecureAccessDefaults => {
+  const allowInsecureOverrides = props?.allowInsecureOverrides === true;
+  const publicReadAccess = allowInsecureOverrides ? (props?.publicReadAccess ?? false) : false;
+  const blockPublicAccess = allowInsecureOverrides
+    ? (props?.blockPublicAccess ?? s3.BlockPublicAccess.BLOCK_ALL)
+    : s3.BlockPublicAccess.BLOCK_ALL;
+
+  if (externalPolicyOrigin !== undefined) {
+    if (
+      allowInsecureOverrides
+      && (props?.enforceSSL !== undefined || props?.minimumTLSVersion !== undefined)
+    ) {
+      throw new Error(EXTERNAL_POLICY_SSL_OVERRIDE_ERROR);
+    }
+    return {
+      removalPolicy: externalPolicyOrigin.removalPolicy,
+      publicReadAccess,
+      blockPublicAccess,
+      // CDK adds the TLS deny only when enforceSSL is set. This type adds that deny in addOriginPolicy.
+      enforceSSL: false,
+      minimumTLSVersion: undefined,
+    };
+  }
+
+  if (!allowInsecureOverrides) {
+    return {
+      removalPolicy: RemovalPolicy.RETAIN,
+      publicReadAccess,
+      blockPublicAccess,
+      enforceSSL: true,
+      minimumTLSVersion: MINIMUM_TLS_VERSION,
+    };
+  }
+
+  const enforceSSL = props?.enforceSSL ?? true;
+  if (!enforceSSL && props?.minimumTLSVersion !== undefined) {
+    throw new Error(MINIMUM_TLS_VERSION_REQUIRES_ENFORCE_SSL_ERROR);
+  }
+
+  return {
+    removalPolicy: props?.removalPolicy ?? RemovalPolicy.RETAIN,
+    publicReadAccess,
+    blockPublicAccess,
+    enforceSSL,
+    minimumTLSVersion: enforceSSL ? (props?.minimumTLSVersion ?? MINIMUM_TLS_VERSION) : undefined,
   };
 };
 
@@ -713,7 +799,9 @@ const grantCloudFrontOriginRead = (
  * and encryption (S3-managed for log, origin, and archive types; KMS-managed by default otherwise).
  *
  * @remarks
- * Secure defaults applied for every type:
+ * Secure defaults applied for every type.
+ * `publicReadAccess` and `blockPublicAccess` stay at these values unless
+ * {@link S3SecureBucketProps.allowInsecureOverrides} is true:
  * - `publicReadAccess`: `false`
  * - `blockPublicAccess`: {@link s3.BlockPublicAccess.BLOCK_ALL}
  * - `objectOwnership`: {@link s3.ObjectOwnership.BUCKET_OWNER_ENFORCED} unless overridden
@@ -723,16 +811,26 @@ const grantCloudFrontOriginRead = (
  *   ({@link S3SecureBucketType.CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET} forces {@link s3.BucketAccessControl.LOG_DELIVERY_WRITE};
  *   {@link S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET} omits `accessControl` and rejects any value)
  *
- * Defaults for every type except {@link S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET}:
- * - `removalPolicy`: {@link RemovalPolicy.RETAIN} (the prop is ignored)
+ * Defaults for every type except {@link S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET}.
+ * `removalPolicy`, `enforceSSL`, and `minimumTLSVersion` stay at these values unless
+ * {@link S3SecureBucketProps.allowInsecureOverrides} is true:
+ * - `removalPolicy`: {@link RemovalPolicy.RETAIN}
  * - `enforceSSL`: `true` (deny requests that are not HTTPS)
  * - `minimumTLSVersion`: `1.2` (deny TLS below 1.2 on this bucket's policy)
  * - `versioned`: `true` unless explicitly set in `props`
  *
+ * Omitted fields keep those defaults when the flag is true.
+ * `minimumTLSVersion` applies only when `enforceSSL` is enabled. Setting it while `enforceSSL` is false fails at construction.
+ * `publicReadAccess: true` adds an `s3:GetObject` allow for every principal and requires `blockPublicAccess` to be set
+ * with `blockPublicPolicy` disabled.
+ *
  * {@link S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET} uses `removalPolicy` from props
- * ({@link RemovalPolicy.RETAIN} when omitted), `enforceSSL: false` (no {@link s3.BucketPolicy} in this
+ * ({@link RemovalPolicy.RETAIN} when omitted), `enforceSSL: false` (no TLS {@link s3.BucketPolicy} in this
  * bucket's stack), and `versioned: false` (`true` is rejected). TLS and CloudFront origin statements
  * are added with {@link S3SecureBucket#addOriginPolicy}.
+ * The flag can change `publicReadAccess` and `blockPublicAccess` for this type.
+ * Setting `enforceSSL` or `minimumTLSVersion` while the flag is true fails at construction.
+ * `publicReadAccess: true` adds a bucket policy.
  *
  * Bucket-type-specific behavior:
  * - {@link S3SecureBucketType.DEPLOYMENT_PIPELINE_ARTIFACT_BUCKET}: may attach a deploy-role policy when a non-default bootstrap qualifier is present.
@@ -779,7 +877,9 @@ export class S3SecureBucket extends s3.Bucket {
    *
    * @param scope - Parent construct, typically a {@link Stack}.
    * @param id - Construct ID (stable logical ID segment).
-   * @param props - Optional {@link S3SecureBucketProps}; secure defaults override several {@link s3.BucketProps} fields.
+   * @param props - Optional {@link S3SecureBucketProps}. Secure defaults override `removalPolicy`,
+   * `publicReadAccess`, `blockPublicAccess`, `enforceSSL`, and `minimumTLSVersion` unless
+   * {@link S3SecureBucketProps.allowInsecureOverrides} is true.
    * When `eventBridgeEnabled` is `true`, EventBridge notification is enabled via an L1 property override.
    */
   constructor(scope: Construct, id: string, props?: S3SecureBucketProps) {
@@ -805,18 +905,18 @@ export class S3SecureBucket extends s3.Bucket {
         externalPolicyOrigin?.encryption ?? resolveEncryptionDefault(bucketType, props?.encryption),
       )
       : undefined;
+    const secureAccess = resolveSecureAccess(props, externalPolicyOrigin);
 
     super(scope, id, {
       ...props,
-      removalPolicy: externalPolicyOrigin?.removalPolicy ?? RemovalPolicy.RETAIN,
+      removalPolicy: secureAccess.removalPolicy,
       encryption: externalPolicyOrigin?.encryption ?? resolveEncryptionDefault(bucketType, props?.encryption),
       accessControl,
       eventBridgeEnabled: undefined,
-      publicReadAccess: false,
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      enforceSSL: externalPolicyOrigin ? false : true,
-      // CDK applies s3:TlsVersion only when enforceSSL is set. This type adds that deny in addOriginPolicy.
-      minimumTLSVersion: externalPolicyOrigin ? undefined : MINIMUM_TLS_VERSION,
+      publicReadAccess: secureAccess.publicReadAccess,
+      blockPublicAccess: secureAccess.blockPublicAccess,
+      enforceSSL: secureAccess.enforceSSL,
+      minimumTLSVersion: secureAccess.minimumTLSVersion,
       versioned: externalPolicyOrigin?.versioned
         ?? (props?.versioned !== undefined ? props.versioned : true),
       objectOwnership: legacyAcl?.objectOwnership

@@ -12,11 +12,12 @@ AWS CDK v2 construct for an Amazon S3 bucket with private access, encryption, an
 ## Features
 
 - Private access and block public access. The bucket policy denies requests that are not HTTPS and denies TLS below 1.2, except `CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET` (those denies are added by `addOriginPolicy` on a policy you create)
+- `allowInsecureOverrides` (off by default) applies `removalPolicy`, `publicReadAccess`, `blockPublicAccess`, `enforceSSL`, and `minimumTLSVersion` from props. Omitted fields keep the secure defaults. `CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET` rejects `enforceSSL` and `minimumTLSVersion` when the flag is on. `publicReadAccess: true` adds an `s3:GetObject` allow for everyone and needs `blockPublicAccess` with public bucket policies allowed
 - **Explicit encryption header** (`denyUnencryptedObjectUploads`, off by default): denies `s3:PutObject` when `x-amz-server-side-encryption` is missing or names an algorithm other than this bucket's (`AES256`, `aws:kms`, or `aws:kms:dsse`). Leave it off for log delivery buckets; those writers omit the header and use bucket default encryption
 - **Default bucket**: KMS-managed encryption (`aws:kms`) unless overridden
 - **Log / origin / archive types**: S3-managed encryption (`AES256`) for `ACCESS_LOG_BUCKET`, `CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET`, `CLOUDFRONT_ORIGIN_BUCKET`, `CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET`, and `CLOUD_WATCH_LOG_ARCHIVE_BUCKET`
 - Versioning on by default (`CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET` is unversioned and rejects `versioned: true`); object ownership `BucketOwnerEnforced` by default (`ObjectWriter` for CloudFront legacy access logs)
-- `RemovalPolicy.RETAIN` on the bucket (`CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET` uses `removalPolicy` from props when you set it)
+- `RemovalPolicy.RETAIN` on the bucket (`CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET` uses `removalPolicy` from props when you set it; other types do so when `allowInsecureOverrides` is true)
 - Optional EventBridge notifications via `eventBridgeEnabled`
 - **`bucketType` presets**
   - **`DEFAULT_BUCKET`**: general-purpose secure bucket (KMS-managed encryption by default)
@@ -31,6 +32,8 @@ AWS CDK v2 construct for an Amazon S3 bucket with private access, encryption, an
 ## How it works
 
 Creating an `S3SecureBucket` applies private access and block public access. Except for `CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET`, it also requires HTTPS at TLS 1.2 or higher, enables versioning, sets `RemovalPolicy.RETAIN`, and keeps any bucket policy as a child of the bucket. `bucketType` selects the encryption default and, for some types, a bucket policy: deploy-role access for a non-default CDK bootstrap qualifier, CloudFront `s3:GetObject` when you call `grantCloudFrontRead`, log delivery for access logs, or CloudWatch Logs export. CloudFront legacy access-log buckets rely on ACL (`LogDeliveryWrite`) instead of those resource policies. Load balancers that write access logs should depend on `accessLogBucketPolicyDependable` so the policy exists before AWS validates the log destination.
+
+Set `allowInsecureOverrides` to apply `removalPolicy`, `publicReadAccess`, `blockPublicAccess`, `enforceSSL`, and `minimumTLSVersion` from props. Fields you omit keep the secure defaults. `minimumTLSVersion` is applied only when `enforceSSL` is enabled. `CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET` still omits the TLS bucket policy, so `enforceSSL` and `minimumTLSVersion` cannot be set with that flag. `publicReadAccess: true` adds an `s3:GetObject` allow for everyone, including on that type, and requires a `blockPublicAccess` value that allows a public bucket policy.
 
 Set `denyUnencryptedObjectUploads` when uploaders must send `x-amz-server-side-encryption`. Bucket default encryption still encrypts a request that omits the header, so this option is off unless you turn it on. `ACCESS_LOG_BUCKET`, `CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET`, and `CLOUD_WATCH_LOG_ARCHIVE_BUCKET` reject it because ALB/NLB, CloudFront logging, S3 server access logging, and CloudWatch Logs export omit that header.
 
@@ -111,7 +114,7 @@ originBucket.grantCloudFrontRead(distribution);
 
 ### CloudFront origin with the bucket policy in another stack
 
-Use `CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET` when the distribution and the bucket policy cannot live in the bucket's stack. The bucket is private, S3-managed (`AES256`), unversioned, and has no `AWS::S3::BucketPolicy` and no `AccessControl`. `removalPolicy` follows props and defaults to `RemovalPolicy.RETAIN`. `versioned: true`, an encryption value other than `S3_MANAGED`, an `objectOwnership` value other than `BUCKET_OWNER_ENFORCED`, or any `accessControl` value fails at construction. Other `BucketProps`, such as `lifecycleRules`, are passed through.
+Use `CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET` when the distribution and the bucket policy cannot live in the bucket's stack. The bucket is private, S3-managed (`AES256`), unversioned, and has no `AWS::S3::BucketPolicy` and no `AccessControl`. `removalPolicy` follows props and defaults to `RemovalPolicy.RETAIN`. `versioned: true`, an encryption value other than `S3_MANAGED`, an `objectOwnership` value other than `BUCKET_OWNER_ENFORCED`, or any `accessControl` value fails at construction. Other `BucketProps`, such as `lifecycleRules`, are passed through. With `allowInsecureOverrides`, `publicReadAccess` and `blockPublicAccess` follow props. `publicReadAccess: true` creates a bucket policy. `enforceSSL` and `minimumTLSVersion` still cannot be set.
 
 Create the `BucketPolicy` yourself and pass the distribution ARN as a string. Assemble that ARN in your stacks (for example from an exported distribution ID). Do not pass the distribution object into this construct.
 
@@ -222,7 +225,7 @@ For cross-account export, extend the bucket policy with additional `aws:SourceAc
 
 ## Options
 
-`S3SecureBucket` accepts `S3SecureBucketProps`, which extends [`s3.BucketProps`](https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cdk-lib.aws_s3.BucketProps.html). Standard options such as `bucketName`, `versioned`, `encryption`, `lifecycleRules`, and `eventBridgeEnabled` work alongside the secure defaults. `CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET` keeps S3-managed encryption, private access, `BUCKET_OWNER_ENFORCED`, and versioning off. It omits `accessControl` and honors `removalPolicy`. When `eventBridgeEnabled` is `true`, EventBridge notification is enabled on the bucket.
+`S3SecureBucket` accepts `S3SecureBucketProps`, which extends [`s3.BucketProps`](https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cdk-lib.aws_s3.BucketProps.html). Standard options such as `bucketName`, `versioned`, `encryption`, `lifecycleRules`, and `eventBridgeEnabled` work alongside the secure defaults. `removalPolicy`, `publicReadAccess`, `blockPublicAccess`, `enforceSSL`, and `minimumTLSVersion` stay at the secure defaults unless `allowInsecureOverrides` is true. `CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET` keeps S3-managed encryption, `BUCKET_OWNER_ENFORCED`, and versioning off. It omits `accessControl` and honors `removalPolicy`. `publicReadAccess` and `blockPublicAccess` stay private unless `allowInsecureOverrides` is true. `enforceSSL` and `minimumTLSVersion` stay unset for that type. When `eventBridgeEnabled` is `true`, EventBridge notification is enabled on the bucket.
 
 ### Construct props (`S3SecureBucketProps`)
 
@@ -231,7 +234,8 @@ For cross-account export, extend the bucket policy with additional `aws:SourceAc
 | `bucketType` | `S3SecureBucketType` | `DEFAULT_BUCKET` | Selects encryption defaults and optional resource-policy or ACL settings. |
 | `accessLogDelivery` | `AccessLogDeliveryScope` | stack account only | `ACCESS_LOG_BUCKET` only. Exactly one of `allowedSourceAccountIds` or `organizationId`. |
 | `denyUnencryptedObjectUploads` | `boolean` | `false` | Requires `x-amz-server-side-encryption` on `s3:PutObject`. Rejected for access-log, legacy CloudFront log, and CloudWatch Logs archive buckets. On `CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET`, `addOriginPolicy` appends the denies. |
-| *(inherited)* | `s3.BucketProps` | — | All other `Bucket` properties are passed through (some receive overrides inside the construct). |
+| `allowInsecureOverrides` | `boolean` | `false` | Applies `removalPolicy`, `publicReadAccess`, `blockPublicAccess`, `enforceSSL`, and `minimumTLSVersion` from props. Omitted fields keep the secure defaults. `CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET` rejects `enforceSSL` and `minimumTLSVersion` when this is true. `publicReadAccess: true` adds a public `s3:GetObject` allow. |
+| *(inherited)* | `s3.BucketProps` | — | Other `Bucket` properties are passed through. The five fields above stay at the secure defaults unless `allowInsecureOverrides` is true. |
 
 ### `S3SecureBucketType` values
 
