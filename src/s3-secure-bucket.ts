@@ -199,64 +199,84 @@ export interface S3SecureBucketProps extends s3.BucketProps {
 const CLOUDFRONT_SERVICE_PRINCIPAL = 'cloudfront.amazonaws.com';
 const MINIMUM_TLS_VERSION = 1.2;
 const ELB_SOURCE_ARN = 'arn:aws:elasticloadbalancing:*:*:loadbalancer/*';
-const S3_ALL_ACTIONS = 's3:*';
-const S3_GET_OBJECT = 's3:GetObject';
-const S3_GET_OBJECT_VERSION = 's3:GetObjectVersion';
-const S3_PUT_OBJECT = 's3:PutObject';
-const S3_DELETE_OBJECT = 's3:DeleteObject';
-const S3_ABORT_MULTIPART_UPLOAD = 's3:AbortMultipartUpload';
-const S3_LIST_BUCKET = 's3:ListBucket';
-const S3_GET_BUCKET_VERSIONING = 's3:GetBucketVersioning';
-const S3_GET_BUCKET_LOCATION = 's3:GetBucketLocation';
-const DEPLOY_ROLE_BUCKET_ACTIONS = [
-  S3_LIST_BUCKET,
-  S3_GET_BUCKET_VERSIONING,
-  S3_GET_BUCKET_LOCATION,
-];
-const DEPLOY_ROLE_OBJECT_ACTIONS = [
-  S3_GET_OBJECT,
-  S3_GET_OBJECT_VERSION,
-  S3_PUT_OBJECT,
-  S3_DELETE_OBJECT,
-  S3_ABORT_MULTIPART_UPLOAD,
-];
-const SSE_HEADER = 's3:x-amz-server-side-encryption';
-const SSE_S3 = 'AES256';
-const SSE_KMS = 'aws:kms';
-const SSE_DSSE = 'aws:kms:dsse';
-const AWS_SOURCE_ORG_ID = 'aws:SourceOrgID';
-const AWS_SOURCE_ACCOUNT = 'aws:SourceAccount';
-const AWS_SOURCE_ARN = 'aws:SourceArn';
-// CloudFront origin conditions use an uppercase AWS prefix. aws:SourceArn is a different key.
-const CLOUDFRONT_SOURCE_ARN = 'AWS:SourceArn';
 
-const REQUIRED_LEGACY_ACCESS_CONTROL = s3.BucketAccessControl.LOG_DELIVERY_WRITE;
-const REQUIRED_LEGACY_OBJECT_OWNERSHIP = s3.ObjectOwnership.OBJECT_WRITER;
-const REQUIRED_EXTERNAL_POLICY_ENCRYPTION = s3.BucketEncryption.S3_MANAGED;
-const REQUIRED_EXTERNAL_POLICY_OBJECT_OWNERSHIP = s3.ObjectOwnership.BUCKET_OWNER_ENFORCED;
-const LEGACY_CLOUD_FRONT_LOG_ACL_ERROR =
-  'CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET requires accessControl LOG_DELIVERY_WRITE and objectOwnership OBJECT_WRITER for legacy CloudFront access logging';
-const EXTERNAL_POLICY_ENCRYPTION_ERROR =
-  'CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET requires encryption S3_MANAGED';
-const EXTERNAL_POLICY_OBJECT_OWNERSHIP_ERROR =
-  'CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET requires objectOwnership BUCKET_OWNER_ENFORCED';
-const EXTERNAL_POLICY_ACCESS_CONTROL_ERROR =
-  'CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET does not accept accessControl';
-const EXTERNAL_POLICY_VERSIONED_ERROR =
-  'CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET requires versioned false';
-const EXTERNAL_POLICY_SSL_OVERRIDE_ERROR =
-  'CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET does not accept enforceSSL or minimumTLSVersion';
-const MINIMUM_TLS_VERSION_REQUIRES_ENFORCE_SSL_ERROR =
-  'minimumTLSVersion requires enforceSSL';
-const ADD_ORIGIN_POLICY_BUCKET_TYPE_ERROR =
-  'addOriginPolicy is only supported when bucketType is CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET';
-const ADD_ORIGIN_POLICY_BUCKET_MISMATCH_ERROR =
-  'addOriginPolicy requires a BucketPolicy for this bucket';
-const ADD_ORIGIN_POLICY_EMPTY_ARN_ERROR = 'distributionArn must not be empty';
-const DENY_UNENCRYPTED_OBJECT_UPLOADS_UNSUPPORTED_ERROR =
-  'denyUnencryptedObjectUploads is not supported when bucketType is ACCESS_LOG_BUCKET, CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET, or CLOUD_WATCH_LOG_ARCHIVE_BUCKET';
-const ACCESS_LOG_DELIVERY_EXCLUSIVE_ERROR =
-  'accessLogDelivery must specify exactly one of allowedSourceAccountIds or organizationId';
+const S3_ACTION = Object.freeze({
+  ALL: 's3:*',
+  GET_OBJECT: 's3:GetObject',
+  GET_OBJECT_VERSION: 's3:GetObjectVersion',
+  PUT_OBJECT: 's3:PutObject',
+  DELETE_OBJECT: 's3:DeleteObject',
+  ABORT_MULTIPART_UPLOAD: 's3:AbortMultipartUpload',
+  LIST_BUCKET: 's3:ListBucket',
+  GET_BUCKET_VERSIONING: 's3:GetBucketVersioning',
+  GET_BUCKET_LOCATION: 's3:GetBucketLocation',
+} as const);
+
+const DEPLOY_ROLE_ACTION = Object.freeze({
+  BUCKET: Object.freeze([
+    S3_ACTION.LIST_BUCKET,
+    S3_ACTION.GET_BUCKET_VERSIONING,
+    S3_ACTION.GET_BUCKET_LOCATION,
+  ] as const),
+  OBJECT: Object.freeze([
+    S3_ACTION.GET_OBJECT,
+    S3_ACTION.GET_OBJECT_VERSION,
+    S3_ACTION.PUT_OBJECT,
+    S3_ACTION.DELETE_OBJECT,
+    S3_ACTION.ABORT_MULTIPART_UPLOAD,
+  ] as const),
+});
+
+const SSE_ALGORITHM = Object.freeze({
+  S3: 'AES256',
+  KMS: 'aws:kms',
+  DSSE: 'aws:kms:dsse',
+} as const);
+
+// CloudFront origin conditions use an uppercase AWS prefix. aws:SourceArn is a different key.
+const CONDITION_KEY = Object.freeze({
+  SOURCE_ORG_ID: 'aws:SourceOrgID',
+  SOURCE_ACCOUNT: 'aws:SourceAccount',
+  SOURCE_ARN: 'aws:SourceArn',
+  CLOUDFRONT_SOURCE_ARN: 'AWS:SourceArn',
+  SERVER_SIDE_ENCRYPTION: 's3:x-amz-server-side-encryption',
+} as const);
+
+const REQUIRED_LEGACY_ACCESS_LOG = Object.freeze({
+  ACCESS_CONTROL: s3.BucketAccessControl.LOG_DELIVERY_WRITE,
+  OBJECT_OWNERSHIP: s3.ObjectOwnership.OBJECT_WRITER,
+} as const);
+
+const REQUIRED_EXTERNAL_POLICY = Object.freeze({
+  ENCRYPTION: s3.BucketEncryption.S3_MANAGED,
+  OBJECT_OWNERSHIP: s3.ObjectOwnership.BUCKET_OWNER_ENFORCED,
+} as const);
+
+const ERROR = Object.freeze({
+  LEGACY_CLOUD_FRONT_LOG_ACL:
+    'CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET requires accessControl LOG_DELIVERY_WRITE and objectOwnership OBJECT_WRITER for legacy CloudFront access logging',
+  EXTERNAL_POLICY_ENCRYPTION:
+    'CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET requires encryption S3_MANAGED',
+  EXTERNAL_POLICY_OBJECT_OWNERSHIP:
+    'CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET requires objectOwnership BUCKET_OWNER_ENFORCED',
+  EXTERNAL_POLICY_ACCESS_CONTROL:
+    'CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET does not accept accessControl',
+  EXTERNAL_POLICY_VERSIONED:
+    'CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET requires versioned false',
+  EXTERNAL_POLICY_SSL_OVERRIDE:
+    'CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET does not accept enforceSSL or minimumTLSVersion',
+  MINIMUM_TLS_VERSION_REQUIRES_ENFORCE_SSL:
+    'minimumTLSVersion requires enforceSSL',
+  ADD_ORIGIN_POLICY_BUCKET_TYPE:
+    'addOriginPolicy is only supported when bucketType is CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET',
+  ADD_ORIGIN_POLICY_BUCKET_MISMATCH:
+    'addOriginPolicy requires a BucketPolicy for this bucket',
+  ADD_ORIGIN_POLICY_EMPTY_ARN: 'distributionArn must not be empty',
+  DENY_UNENCRYPTED_OBJECT_UPLOADS_UNSUPPORTED:
+    'denyUnencryptedObjectUploads is not supported when bucketType is ACCESS_LOG_BUCKET, CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET, or CLOUD_WATCH_LOG_ARCHIVE_BUCKET',
+  ACCESS_LOG_DELIVERY_EXCLUSIVE:
+    'accessLogDelivery must specify exactly one of allowedSourceAccountIds or organizationId',
+} as const);
 
 interface CloudFrontLegacyAccessLogAclDefaults {
   readonly accessControl: s3.BucketAccessControl;
@@ -316,12 +336,12 @@ const resolveEncryptionDefault = (
  */
 const resolveRequiredSseHeader = (encryption: s3.BucketEncryption): string => {
   if (encryption === s3.BucketEncryption.KMS || encryption === s3.BucketEncryption.KMS_MANAGED) {
-    return SSE_KMS;
+    return SSE_ALGORITHM.KMS;
   }
   if (encryption === s3.BucketEncryption.DSSE || encryption === s3.BucketEncryption.DSSE_MANAGED) {
-    return SSE_DSSE;
+    return SSE_ALGORITHM.DSSE;
   }
-  return SSE_S3;
+  return SSE_ALGORITHM.S3;
 };
 
 /**
@@ -353,11 +373,11 @@ const unencryptedObjectUploadDenies = (
       sid: 'DenyIncorrectEncryptionHeader',
       effect: iam.Effect.DENY,
       principals: [new iam.AnyPrincipal()],
-      actions: [S3_PUT_OBJECT],
+      actions: [S3_ACTION.PUT_OBJECT],
       resources: [bucket.arnForObjects('*')],
       conditions: {
         StringNotEquals: {
-          [SSE_HEADER]: sseHeader,
+          [CONDITION_KEY.SERVER_SIDE_ENCRYPTION]: sseHeader,
         },
       },
     }),
@@ -365,11 +385,11 @@ const unencryptedObjectUploadDenies = (
       sid: 'DenyUnencryptedObjectUploads',
       effect: iam.Effect.DENY,
       principals: [new iam.AnyPrincipal()],
-      actions: [S3_PUT_OBJECT],
+      actions: [S3_ACTION.PUT_OBJECT],
       resources: [bucket.arnForObjects('*')],
       conditions: {
         Null: {
-          [SSE_HEADER]: 'true',
+          [CONDITION_KEY.SERVER_SIDE_ENCRYPTION]: 'true',
         },
       },
     }),
@@ -399,16 +419,16 @@ const resolveCloudFrontLegacyAccessLogAcl = (
   propsAccessControl?: s3.BucketAccessControl,
   propsObjectOwnership?: s3.ObjectOwnership,
 ): CloudFrontLegacyAccessLogAclDefaults => {
-  if (propsAccessControl !== undefined && propsAccessControl !== REQUIRED_LEGACY_ACCESS_CONTROL) {
-    throw new Error(LEGACY_CLOUD_FRONT_LOG_ACL_ERROR);
+  if (propsAccessControl !== undefined && propsAccessControl !== REQUIRED_LEGACY_ACCESS_LOG.ACCESS_CONTROL) {
+    throw new Error(ERROR.LEGACY_CLOUD_FRONT_LOG_ACL);
   }
-  if (propsObjectOwnership !== undefined && propsObjectOwnership !== REQUIRED_LEGACY_OBJECT_OWNERSHIP) {
-    throw new Error(LEGACY_CLOUD_FRONT_LOG_ACL_ERROR);
+  if (propsObjectOwnership !== undefined && propsObjectOwnership !== REQUIRED_LEGACY_ACCESS_LOG.OBJECT_OWNERSHIP) {
+    throw new Error(ERROR.LEGACY_CLOUD_FRONT_LOG_ACL);
   }
 
   return {
-    accessControl: REQUIRED_LEGACY_ACCESS_CONTROL,
-    objectOwnership: REQUIRED_LEGACY_OBJECT_OWNERSHIP,
+    accessControl: REQUIRED_LEGACY_ACCESS_LOG.ACCESS_CONTROL,
+    objectOwnership: REQUIRED_LEGACY_ACCESS_LOG.OBJECT_OWNERSHIP,
   };
 };
 
@@ -420,25 +440,25 @@ const resolveCloudFrontLegacyAccessLogAcl = (
 const resolveCloudFrontOriginExternalPolicy = (
   props?: S3SecureBucketProps,
 ): CloudFrontOriginExternalPolicyDefaults => {
-  if (props?.encryption !== undefined && props.encryption !== REQUIRED_EXTERNAL_POLICY_ENCRYPTION) {
-    throw new Error(EXTERNAL_POLICY_ENCRYPTION_ERROR);
+  if (props?.encryption !== undefined && props.encryption !== REQUIRED_EXTERNAL_POLICY.ENCRYPTION) {
+    throw new Error(ERROR.EXTERNAL_POLICY_ENCRYPTION);
   }
   if (
     props?.objectOwnership !== undefined
-    && props.objectOwnership !== REQUIRED_EXTERNAL_POLICY_OBJECT_OWNERSHIP
+    && props.objectOwnership !== REQUIRED_EXTERNAL_POLICY.OBJECT_OWNERSHIP
   ) {
-    throw new Error(EXTERNAL_POLICY_OBJECT_OWNERSHIP_ERROR);
+    throw new Error(ERROR.EXTERNAL_POLICY_OBJECT_OWNERSHIP);
   }
   if (props?.accessControl !== undefined) {
-    throw new Error(EXTERNAL_POLICY_ACCESS_CONTROL_ERROR);
+    throw new Error(ERROR.EXTERNAL_POLICY_ACCESS_CONTROL);
   }
   if (props?.versioned === true) {
-    throw new Error(EXTERNAL_POLICY_VERSIONED_ERROR);
+    throw new Error(ERROR.EXTERNAL_POLICY_VERSIONED);
   }
 
   return {
-    encryption: REQUIRED_EXTERNAL_POLICY_ENCRYPTION,
-    objectOwnership: REQUIRED_EXTERNAL_POLICY_OBJECT_OWNERSHIP,
+    encryption: REQUIRED_EXTERNAL_POLICY.ENCRYPTION,
+    objectOwnership: REQUIRED_EXTERNAL_POLICY.OBJECT_OWNERSHIP,
     versioned: false,
     removalPolicy: props?.removalPolicy ?? RemovalPolicy.RETAIN,
   };
@@ -463,7 +483,7 @@ const resolveSecureAccess = (
       allowInsecureOverrides
       && (props?.enforceSSL !== undefined || props?.minimumTLSVersion !== undefined)
     ) {
-      throw new Error(EXTERNAL_POLICY_SSL_OVERRIDE_ERROR);
+      throw new Error(ERROR.EXTERNAL_POLICY_SSL_OVERRIDE);
     }
     return {
       removalPolicy: externalPolicyOrigin.removalPolicy,
@@ -487,7 +507,7 @@ const resolveSecureAccess = (
 
   const enforceSSL = props?.enforceSSL ?? true;
   if (!enforceSSL && props?.minimumTLSVersion !== undefined) {
-    throw new Error(MINIMUM_TLS_VERSION_REQUIRES_ENFORCE_SSL_ERROR);
+    throw new Error(ERROR.MINIMUM_TLS_VERSION_REQUIRES_ENFORCE_SSL);
   }
 
   return {
@@ -555,14 +575,14 @@ const resolveAccessLogDelivery = (
   const { allowedSourceAccountIds, organizationId } = scope;
   if (organizationId !== undefined) {
     if (allowedSourceAccountIds !== undefined) {
-      throw new Error(ACCESS_LOG_DELIVERY_EXCLUSIVE_ERROR);
+      throw new Error(ERROR.ACCESS_LOG_DELIVERY_EXCLUSIVE);
     }
     return resolveOrganizationDelivery(bucketArn, organizationId);
   }
   if (allowedSourceAccountIds !== undefined) {
     return resolveAccountListDelivery(bucketArn, allowedSourceAccountIds);
   }
-  throw new Error(ACCESS_LOG_DELIVERY_EXCLUSIVE_ERROR);
+  throw new Error(ERROR.ACCESS_LOG_DELIVERY_EXCLUSIVE);
 };
 
 /**
@@ -584,12 +604,12 @@ const applyDeploymentPipelineArtifactPolicy = (
     `arn:aws:iam::${account}:role/cdk-${qualifier}-deploy-role-${account}-${region}`,
   );
   bucket.addToResourcePolicy(new iam.PolicyStatement({
-    actions: DEPLOY_ROLE_BUCKET_ACTIONS,
+    actions: [...DEPLOY_ROLE_ACTION.BUCKET],
     resources: [bucket.bucketArn],
     principals: [deployRole],
   }));
   bucket.addToResourcePolicy(new iam.PolicyStatement({
-    actions: DEPLOY_ROLE_OBJECT_ACTIONS,
+    actions: [...DEPLOY_ROLE_ACTION.OBJECT],
     resources: [bucket.arnForObjects('*')],
     principals: [deployRole],
   }));
@@ -613,7 +633,7 @@ const applyAccessLogBucketPolicy = (
     ? undefined
     : {
       StringEquals: {
-        [AWS_SOURCE_ORG_ID]: organizationId,
+        [CONDITION_KEY.SOURCE_ORG_ID]: organizationId,
       },
     };
 
@@ -621,10 +641,10 @@ const applyAccessLogBucketPolicy = (
     ? undefined
     : {
       StringEquals: {
-        [AWS_SOURCE_ORG_ID]: organizationId,
+        [CONDITION_KEY.SOURCE_ORG_ID]: organizationId,
       },
       ArnLike: {
-        [AWS_SOURCE_ARN]: ELB_SOURCE_ARN,
+        [CONDITION_KEY.SOURCE_ARN]: ELB_SOURCE_ARN,
       },
     };
 
@@ -634,7 +654,7 @@ const applyAccessLogBucketPolicy = (
     principals: [
       new iam.ServicePrincipal('logdelivery.elasticloadbalancing.amazonaws.com'),
     ],
-    actions: [S3_PUT_OBJECT],
+    actions: [S3_ACTION.PUT_OBJECT],
     resources: awsLogsResources,
     conditions: albOrganizationConditions,
   }));
@@ -649,7 +669,7 @@ const applyAccessLogBucketPolicy = (
       principals: [
         new iam.AccountPrincipal(elbAccountId),
       ],
-      actions: [S3_PUT_OBJECT],
+      actions: [S3_ACTION.PUT_OBJECT],
       resources: awsLogsResources,
       // The ELBv2 delivery account is not an organization member; do not attach aws:SourceOrgID.
     }));
@@ -661,7 +681,7 @@ const applyAccessLogBucketPolicy = (
     principals: [
       new iam.ServicePrincipal('delivery.logs.amazonaws.com'),
     ],
-    actions: [S3_PUT_OBJECT],
+    actions: [S3_ACTION.PUT_OBJECT],
     resources: awsLogsResources,
     conditions: organizationConditions,
   }));
@@ -672,7 +692,7 @@ const applyAccessLogBucketPolicy = (
     principals: [
       new iam.ServicePrincipal('logging.s3.amazonaws.com'),
     ],
-    actions: [S3_PUT_OBJECT],
+    actions: [S3_ACTION.PUT_OBJECT],
     resources: awsLogsResources,
     conditions: organizationConditions,
   }));
@@ -698,10 +718,10 @@ const applyCloudWatchLogArchivePolicy = (bucket: s3.Bucket, stack: Stack): void 
     resources: [bucket.bucketArn],
     conditions: {
       StringEquals: {
-        [AWS_SOURCE_ACCOUNT]: [account],
+        [CONDITION_KEY.SOURCE_ACCOUNT]: [account],
       },
       ArnLike: {
-        [AWS_SOURCE_ARN]: [sourceLogGroupArn],
+        [CONDITION_KEY.SOURCE_ARN]: [sourceLogGroupArn],
       },
     },
   }));
@@ -710,15 +730,15 @@ const applyCloudWatchLogArchivePolicy = (bucket: s3.Bucket, stack: Stack): void 
     sid: 'AllowCloudWatchLogsExportPutObject',
     effect: iam.Effect.ALLOW,
     principals: [logsExportPrincipal],
-    actions: [S3_PUT_OBJECT],
+    actions: [S3_ACTION.PUT_OBJECT],
     resources: [`${bucket.bucketArn}/*`],
     conditions: {
       StringEquals: {
         's3:x-amz-acl': 'bucket-owner-full-control',
-        [AWS_SOURCE_ACCOUNT]: [account],
+        [CONDITION_KEY.SOURCE_ACCOUNT]: [account],
       },
       ArnLike: {
-        [AWS_SOURCE_ARN]: [sourceLogGroupArn],
+        [CONDITION_KEY.SOURCE_ARN]: [sourceLogGroupArn],
       },
     },
   }));
@@ -764,7 +784,7 @@ const addCloudFrontOriginExternalStatements = (
     new iam.PolicyStatement({
       effect: iam.Effect.DENY,
       principals: [new iam.AnyPrincipal()],
-      actions: [S3_ALL_ACTIONS],
+      actions: [S3_ACTION.ALL],
       resources: bucketAndObjectArns,
       conditions: {
         Bool: {
@@ -775,7 +795,7 @@ const addCloudFrontOriginExternalStatements = (
     new iam.PolicyStatement({
       effect: iam.Effect.DENY,
       principals: [new iam.AnyPrincipal()],
-      actions: [S3_ALL_ACTIONS],
+      actions: [S3_ACTION.ALL],
       resources: bucketAndObjectArns,
       conditions: {
         NumericLessThan: {
@@ -786,11 +806,11 @@ const addCloudFrontOriginExternalStatements = (
     new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       principals: [new iam.ServicePrincipal(CLOUDFRONT_SERVICE_PRINCIPAL)],
-      actions: [S3_GET_OBJECT],
+      actions: [S3_ACTION.GET_OBJECT],
       resources: [bucket.arnForObjects('*')],
       conditions: {
         StringEquals: {
-          [CLOUDFRONT_SOURCE_ARN]: distributionArn,
+          [CONDITION_KEY.CLOUDFRONT_SOURCE_ARN]: distributionArn,
         },
       },
     }),
@@ -810,11 +830,11 @@ const grantCloudFrontOriginRead = (
     principals: [
       new iam.ServicePrincipal(CLOUDFRONT_SERVICE_PRINCIPAL),
     ],
-    actions: [S3_GET_OBJECT],
+    actions: [S3_ACTION.GET_OBJECT],
     resources: [bucket.arnForObjects('*')],
     conditions: {
       StringEquals: {
-        [CLOUDFRONT_SOURCE_ARN]: distribution.distributionArn,
+        [CONDITION_KEY.CLOUDFRONT_SOURCE_ARN]: distribution.distributionArn,
       },
     },
   }));
@@ -913,7 +933,7 @@ export class S3SecureBucket extends s3.Bucket {
   constructor(scope: Construct, id: string, props?: S3SecureBucketProps) {
     const bucketType = props?.bucketType || S3SecureBucketType.DEFAULT_BUCKET;
     if (props?.denyUnencryptedObjectUploads === true && isServiceLogBucket(bucketType)) {
-      throw new Error(DENY_UNENCRYPTED_OBJECT_UPLOADS_UNSUPPORTED_ERROR);
+      throw new Error(ERROR.DENY_UNENCRYPTED_OBJECT_UPLOADS_UNSUPPORTED);
     }
     const isCloudFrontLegacyAccessLog =
       bucketType === S3SecureBucketType.CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET;
@@ -1024,13 +1044,13 @@ export class S3SecureBucket extends s3.Bucket {
    */
   public addOriginPolicy(policy: s3.BucketPolicy, distributionArn: string): void {
     if (this.bucketType !== S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET) {
-      throw new Error(ADD_ORIGIN_POLICY_BUCKET_TYPE_ERROR);
+      throw new Error(ERROR.ADD_ORIGIN_POLICY_BUCKET_TYPE);
     }
     if (policy.bucket !== this) {
-      throw new Error(ADD_ORIGIN_POLICY_BUCKET_MISMATCH_ERROR);
+      throw new Error(ERROR.ADD_ORIGIN_POLICY_BUCKET_MISMATCH);
     }
     if (!Token.isUnresolved(distributionArn) && distributionArn === '') {
-      throw new Error(ADD_ORIGIN_POLICY_EMPTY_ARN_ERROR);
+      throw new Error(ERROR.ADD_ORIGIN_POLICY_EMPTY_ARN);
     }
 
     addCloudFrontOriginExternalStatements(this, policy, distributionArn);
