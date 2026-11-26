@@ -53,7 +53,10 @@ export const S3SecureBucketType = {
    * Pipeline artifact bucket when using a custom CDK bootstrap qualifier
    * (single- or multi-region deployments).
    *
-   * Adds an `s3:*` grant for `cdk-<qualifier>-deploy-role` when the bootstrap qualifier is not default.
+   * When the bootstrap qualifier is not default, allows `cdk-<qualifier>-deploy-role`
+   * `s3:ListBucket`, `s3:GetBucketVersioning`, and `s3:GetBucketLocation` on the bucket,
+   * and `s3:GetObject`, `s3:GetObjectVersion`, `s3:PutObject`, `s3:DeleteObject`, and
+   * `s3:AbortMultipartUpload` on objects.
    */
   DEPLOYMENT_PIPELINE_ARTIFACT_BUCKET: 'DeploymentPipelineArtifactBucket',
   /**
@@ -198,7 +201,25 @@ const MINIMUM_TLS_VERSION = 1.2;
 const ELB_SOURCE_ARN = 'arn:aws:elasticloadbalancing:*:*:loadbalancer/*';
 const S3_ALL_ACTIONS = 's3:*';
 const S3_GET_OBJECT = 's3:GetObject';
+const S3_GET_OBJECT_VERSION = 's3:GetObjectVersion';
 const S3_PUT_OBJECT = 's3:PutObject';
+const S3_DELETE_OBJECT = 's3:DeleteObject';
+const S3_ABORT_MULTIPART_UPLOAD = 's3:AbortMultipartUpload';
+const S3_LIST_BUCKET = 's3:ListBucket';
+const S3_GET_BUCKET_VERSIONING = 's3:GetBucketVersioning';
+const S3_GET_BUCKET_LOCATION = 's3:GetBucketLocation';
+const DEPLOY_ROLE_BUCKET_ACTIONS = [
+  S3_LIST_BUCKET,
+  S3_GET_BUCKET_VERSIONING,
+  S3_GET_BUCKET_LOCATION,
+];
+const DEPLOY_ROLE_OBJECT_ACTIONS = [
+  S3_GET_OBJECT,
+  S3_GET_OBJECT_VERSION,
+  S3_PUT_OBJECT,
+  S3_DELETE_OBJECT,
+  S3_ABORT_MULTIPART_UPLOAD,
+];
 const SSE_HEADER = 's3:x-amz-server-side-encryption';
 const SSE_S3 = 'AES256';
 const SSE_KMS = 'aws:kms';
@@ -545,7 +566,9 @@ const resolveAccessLogDelivery = (
 };
 
 /**
- * Grants the CDK deploy role full S3 access when a non-default bootstrap qualifier is in use.
+ * Grants the CDK deploy role artifact read and write when a non-default bootstrap qualifier is in use.
+ * Bucket actions stay on the bucket ARN, and object actions stay on object ARNs.
+ * The bucket is versioned, so reads include GetObjectVersion and large uploads can abort a multipart upload.
  */
 const applyDeploymentPipelineArtifactPolicy = (
   bucket: s3.Bucket,
@@ -557,15 +580,18 @@ const applyDeploymentPipelineArtifactPolicy = (
   }
 
   const { account, region } = stack;
+  const deployRole = new iam.ArnPrincipal(
+    `arn:aws:iam::${account}:role/cdk-${qualifier}-deploy-role-${account}-${region}`,
+  );
   bucket.addToResourcePolicy(new iam.PolicyStatement({
-    actions: [S3_ALL_ACTIONS],
-    resources: [
-      `${bucket.bucketArn}`,
-      `${bucket.bucketArn}/*`,
-    ],
-    principals: [
-      new iam.ArnPrincipal(`arn:aws:iam::${account}:role/cdk-${qualifier}-deploy-role-${account}-${region}`),
-    ],
+    actions: DEPLOY_ROLE_BUCKET_ACTIONS,
+    resources: [bucket.bucketArn],
+    principals: [deployRole],
+  }));
+  bucket.addToResourcePolicy(new iam.PolicyStatement({
+    actions: DEPLOY_ROLE_OBJECT_ACTIONS,
+    resources: [bucket.arnForObjects('*')],
+    principals: [deployRole],
   }));
 };
 
@@ -833,7 +859,9 @@ const grantCloudFrontOriginRead = (
  * `publicReadAccess: true` adds a bucket policy.
  *
  * Bucket-type-specific behavior:
- * - {@link S3SecureBucketType.DEPLOYMENT_PIPELINE_ARTIFACT_BUCKET}: may attach a deploy-role policy when a non-default bootstrap qualifier is present.
+ * - {@link S3SecureBucketType.DEPLOYMENT_PIPELINE_ARTIFACT_BUCKET}: when the bootstrap qualifier is not default,
+ *   allows the deploy role `s3:ListBucket`, `s3:GetBucketVersioning`, and `s3:GetBucketLocation` on the bucket,
+ *   and `s3:GetObject`, `s3:GetObjectVersion`, `s3:PutObject`, `s3:DeleteObject`, and `s3:AbortMultipartUpload` on objects.
  * - {@link S3SecureBucketType.ACCESS_LOG_BUCKET}: adds log-writer principals; see {@link S3SecureBucket#accessLogBucketPolicyDependable}
  *   and {@link S3SecureBucketProps.accessLogDelivery}.
  * - {@link S3SecureBucketType.CLOUDFRONT_LEGACY_ACCESS_LOG_BUCKET}: S3-managed encryption; ACL-based

@@ -21,7 +21,7 @@ AWS CDK v2 construct for an Amazon S3 bucket with private access, encryption, an
 - Optional EventBridge notifications via `eventBridgeEnabled`
 - **`bucketType` presets**
   - **`DEFAULT_BUCKET`**: general-purpose secure bucket (KMS-managed encryption by default)
-  - **`DEPLOYMENT_PIPELINE_ARTIFACT_BUCKET`**: optional `s3:*` grant for the CDK deploy role when using a **non-default** bootstrap qualifier
+  - **`DEPLOYMENT_PIPELINE_ARTIFACT_BUCKET`**: when the bootstrap qualifier is not the default, grants the CDK deploy role `s3:ListBucket`, `s3:GetBucketVersioning`, and `s3:GetBucketLocation` on the bucket, and `s3:GetObject`, `s3:GetObjectVersion`, `s3:PutObject`, `s3:DeleteObject`, and `s3:AbortMultipartUpload` on objects
   - **`CLOUDFRONT_ORIGIN_BUCKET`**: S3-managed encryption for a CloudFront origin. `S3BucketOrigin.withOriginAccessControl` adds `s3:GetObject` for that distribution. Call `grantCloudFrontRead` only when the distribution cannot update the bucket policy (`cloudfront.amazonaws.com`, conditioned on the distribution ARN)
   - **`CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET`**: S3-managed CloudFront origin that does not create a bucket policy. Create one `AWS::S3::BucketPolicy` in the stack that can see both the bucket and the distribution, then call `addOriginPolicy` with that policy and the distribution ARN string
   - **`ACCESS_LOG_BUCKET`**: `s3:PutObject` for ALB/NLB (`logdelivery.elasticloadbalancing.amazonaws.com` + regional **ELBv2 account** from `aws-cdk-lib/region-info` when known), CloudFront standard logging **v2** (`delivery.logs.amazonaws.com`), and S3 server access logging (`logging.s3.amazonaws.com`). Writers default to `AWSLogs/<stack account>/*`; override with `accessLogDelivery` (`allowedSourceAccountIds` or `organizationId`). Not for legacy `Distribution.logBucket`
@@ -31,7 +31,7 @@ AWS CDK v2 construct for an Amazon S3 bucket with private access, encryption, an
 
 ## How it works
 
-Creating an `S3SecureBucket` applies private access and block public access. Except for `CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET`, it also requires HTTPS at TLS 1.2 or higher, enables versioning, sets `RemovalPolicy.RETAIN`, and keeps any bucket policy as a child of the bucket. `bucketType` selects the encryption default and, for some types, a bucket policy: deploy-role access for a non-default CDK bootstrap qualifier, CloudFront `s3:GetObject` when you call `grantCloudFrontRead`, log delivery for access logs, or CloudWatch Logs export. CloudFront legacy access-log buckets rely on ACL (`LogDeliveryWrite`) instead of those resource policies. Load balancers that write access logs should depend on `accessLogBucketPolicyDependable` so the policy exists before AWS validates the log destination.
+Creating an `S3SecureBucket` applies private access and block public access. Except for `CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET`, it also requires HTTPS at TLS 1.2 or higher, enables versioning, sets `RemovalPolicy.RETAIN`, and keeps any bucket policy as a child of the bucket. `bucketType` selects the encryption default and, for some types, a bucket policy: artifact read and write for the CDK deploy role when the bootstrap qualifier is not the default, CloudFront `s3:GetObject` when you call `grantCloudFrontRead`, log delivery for access logs, or CloudWatch Logs export. CloudFront legacy access-log buckets rely on ACL (`LogDeliveryWrite`) instead of those resource policies. Load balancers that write access logs should depend on `accessLogBucketPolicyDependable` so the policy exists before AWS validates the log destination.
 
 Set `allowInsecureOverrides` to apply `removalPolicy`, `publicReadAccess`, `blockPublicAccess`, `enforceSSL`, and `minimumTLSVersion` from props. Fields you omit keep the secure defaults. `minimumTLSVersion` is applied only when `enforceSSL` is enabled. `CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET` still omits the TLS bucket policy, so `enforceSSL` and `minimumTLSVersion` cannot be set with that flag. `publicReadAccess: true` adds an `s3:GetObject` allow for everyone, including on that type, and requires a `blockPublicAccess` value that allows a public bucket policy.
 
@@ -76,7 +76,7 @@ const bucket = new S3SecureBucket(stack, 'S3SecureBucket', {
 
 ### CDK deployment pipeline artifact bucket
 
-When the stack uses a **non-default** CDK bootstrap qualifier, the construct grants `s3:*` on the bucket to the regional `cdk-<qualifier>-deploy-role`.
+When the stack uses a **non-default** CDK bootstrap qualifier, the construct grants the regional `cdk-<qualifier>-deploy-role` `s3:ListBucket`, `s3:GetBucketVersioning`, and `s3:GetBucketLocation` on the bucket, and `s3:GetObject`, `s3:GetObjectVersion`, `s3:PutObject`, `s3:DeleteObject`, and `s3:AbortMultipartUpload` on its objects.
 
 ```typescript
 import { Stack } from 'aws-cdk-lib';
@@ -242,7 +242,7 @@ For cross-account export, extend the bucket policy with additional `aws:SourceAc
 | Constant | Use case |
 | --- | --- |
 | `S3SecureBucketType.DEFAULT_BUCKET` | General-purpose secure bucket |
-| `S3SecureBucketType.DEPLOYMENT_PIPELINE_ARTIFACT_BUCKET` | CDK pipeline artifact bucket (custom bootstrap qualifier) |
+| `S3SecureBucketType.DEPLOYMENT_PIPELINE_ARTIFACT_BUCKET` | CDK pipeline artifact bucket. A non-default bootstrap qualifier grants the deploy role bucket list, location, and versioning, plus object read, write, delete, and multipart abort |
 | `S3SecureBucketType.CLOUDFRONT_ORIGIN_BUCKET` | CloudFront origin bucket. `grantCloudFrontRead` adds `s3:GetObject` only when the distribution cannot update the bucket policy. `S3BucketOrigin.withOriginAccessControl` adds that statement itself |
 | `S3SecureBucketType.CLOUDFRONT_ORIGIN_EXTERNAL_POLICY_BUCKET` | CloudFront origin with no bucket policy in the bucket stack. `addOriginPolicy` appends TLS and `s3:GetObject` statements to a `BucketPolicy` you create. Pass the distribution ARN as a string |
 | `S3SecureBucketType.ACCESS_LOG_BUCKET` | Centralized access logs for ALB/NLB, CloudFront standard logging v2, and S3 server access logging (`AWSLogs/<account>/*` by default; widen with `accessLogDelivery`). Not for legacy `Distribution.logBucket` |

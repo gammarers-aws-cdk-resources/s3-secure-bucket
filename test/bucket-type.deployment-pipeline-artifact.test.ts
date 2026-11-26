@@ -27,6 +27,27 @@ describe('S3SecureBucket bucketType=DEPLOYMENT_PIPELINE_ARTIFACT_BUCKET Testing'
   });
 
   const template = Template.fromStack(stack);
+  const deployRolePrincipal = {
+    AWS: {
+      'Fn::Join': [
+        '',
+        [
+          'arn:aws:iam::',
+          {
+            Ref: 'AWS::AccountId',
+          },
+          `:role/cdk-${customQualifier}-deploy-role-`,
+          {
+            Ref: 'AWS::AccountId',
+          },
+          '-',
+          {
+            Ref: 'AWS::Region',
+          },
+        ],
+      ],
+    },
+  };
 
   it('Should have bucket policy for custom qualifier deploy role', () => {
     template.hasResourceProperties('AWS::S3::BucketPolicy', {
@@ -37,51 +58,44 @@ describe('S3SecureBucket bucketType=DEPLOYMENT_PIPELINE_ARTIFACT_BUCKET Testing'
         Version: '2012-10-17',
         Statement: Match.arrayWith([
           Match.objectEquals({
-            Action: 's3:*',
-            Effect: 'Allow',
-            Principal: {
-              AWS: {
-                'Fn::Join': [
-                  '',
-                  [
-                    'arn:aws:iam::',
-                    {
-                      Ref: 'AWS::AccountId',
-                    },
-                    `:role/cdk-${customQualifier}-deploy-role-`,
-                    {
-                      Ref: 'AWS::AccountId',
-                    },
-                    '-',
-                    {
-                      Ref: 'AWS::Region',
-                    },
-                  ],
-                ],
-              },
-            },
-            Resource: [
-              {
-                'Fn::GetAtt': [
-                  Match.stringLikeRegexp('S3SecureBucket'),
-                  'Arn',
-                ],
-              },
-              {
-                'Fn::Join': [
-                  '',
-                  [
-                    {
-                      'Fn::GetAtt': [
-                        Match.stringLikeRegexp('S3SecureBucket'),
-                        'Arn',
-                      ],
-                    },
-                    '/*',
-                  ],
-                ],
-              },
+            Action: [
+              's3:ListBucket',
+              's3:GetBucketVersioning',
+              's3:GetBucketLocation',
             ],
+            Effect: 'Allow',
+            Principal: deployRolePrincipal,
+            Resource: {
+              'Fn::GetAtt': [
+                Match.stringLikeRegexp('S3SecureBucket'),
+                'Arn',
+              ],
+            },
+          }),
+          Match.objectEquals({
+            Action: [
+              's3:GetObject',
+              's3:GetObjectVersion',
+              's3:PutObject',
+              's3:DeleteObject',
+              's3:AbortMultipartUpload',
+            ],
+            Effect: 'Allow',
+            Principal: deployRolePrincipal,
+            Resource: {
+              'Fn::Join': [
+                '',
+                [
+                  {
+                    'Fn::GetAtt': [
+                      Match.stringLikeRegexp('S3SecureBucket'),
+                      'Arn',
+                    ],
+                  },
+                  '/*',
+                ],
+              ],
+            },
           }),
         ]),
       },
